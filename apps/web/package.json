@@ -1,0 +1,38 @@
+{
+  "name": "@pronoia/web",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "lint": "oxlint",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@pronoia/ai": "*",
+    "@pronoia/brain": "*",
+    "@pronoia/cognition": "*",
+    "@pronoia/domain": "*",
+    "@pronoia/identity": "*",
+    "@pronoia/mcp": "*",
+    "@pronoia/sdk": "*",
+    "@pronoia/services": "*",
+    "@pronoia/shared": "*",
+    "@pronoia/ui-orchestration": "*",
+    "@pronoia/workflow": "*",
+    "@supabase/supabase-js": "^2.110.0",
+    "lucide-react": "^0.395.0",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@vitejs/plugin-react": "^4.0.0",
+    "oxlint": "^0.3.0",
+    "typescript": "^5.0.0",
+    "vite": "^5.0.0"
+  }
+}

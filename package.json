@@ -1,0 +1,19 @@
+{
+  "name": "pronoia-creator-os",
+  "private": true,
+  "type": "module",
+  "version": "1.0.0",
+  "description": "AI Creative Operating System for Creators, Entrepreneurs, and Knowledge Workers",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "npm run build --workspaces --if-present",
+    "dev": "npm run dev --workspaces --parallel --if-present",
+    "test": "npm run test --workspaces --if-present"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0"
+  }
+}

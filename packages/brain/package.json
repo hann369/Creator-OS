@@ -1,0 +1,19 @@
+{
+  "name": "@pronoia/brain",
+  "version": "1.0.0",
+  "type": "module",
+  "private": true,
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc"
+  },
+  "dependencies": {
+    "@pronoia/domain": "*",
+    "@pronoia/shared": "*",
+    "@pronoia/ai": "*"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0"
+  }
+}

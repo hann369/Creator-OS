@@ -1,0 +1,486 @@
+/* Design System Variables - UX 7.0 Cognitive Ecosystem Light Theme */
+:root {
+  --bg-canvas: #FAF9F6; /* Alabaster */
+  --bg-card: rgba(255, 255, 255, 0.88);
+  --border-color: rgba(15, 90, 71, 0.04);
+  
+  --text-primary: #111612; /* Rich dark charcoal */
+  --text-secondary: #5C675F; /* Sage grey */
+  --accent-color: #0F5A47; /* Deep Sage */
+  --accent-light: #EBF3F0;
+  
+  --font-sans: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-serif: 'Playfair Display', Georgia, serif;
+  --font-mono: 'JetBrains Mono', monospace;
+  
+  --radius-sm: 6px;
+  --radius-md: 12px;
+  --radius-lg: 18px;
+  
+  --shadow-sm: 0px 4px 12px rgba(15, 90, 71, 0.015);
+  --shadow-md: 0px 10px 28px rgba(15, 90, 71, 0.03);
+  --shadow-lg: 0px 20px 48px rgba(15, 90, 71, 0.05);
+  
+  /* Spring transition easement */
+  --transition-spring: transform 0.55s cubic-bezier(0.19, 1, 0.22, 1), opacity 0.4s ease;
+  --transition-smooth: all 0.3s cubic-bezier(0.25, 1, 0.5, 1);
+  --transition-elastic: transform 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+/* Global Reset */
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: var(--font-sans);
+  background-color: var(--bg-canvas);
+  color: var(--text-primary);
+  line-height: 1.7;
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+}
+
+/* Typography Scales */
+.title-serif {
+  font-family: var(--font-serif);
+  font-weight: 400;
+  letter-spacing: -0.02em;
+}
+
+.label-mono {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--text-secondary);
+}
+
+/* View Layout Bodies */
+.view-body {
+  width: 100%;
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 40px 20px 120px 20px; /* Leave space at bottom for floating dock */
+  animation: fadeIn 0.4s cubic-bezier(0.25, 1, 0.5, 1);
+}
+
+/* ─── FLOATING NAVIGATION DOCK ─── */
+.floating-dock {
+  position: fixed;
+  bottom: 30px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: 1px solid var(--border-color);
+  padding: 6px 10px;
+  border-radius: 99px;
+  display: flex;
+  gap: 4px;
+  box-shadow: 0px 10px 30px rgba(15, 90, 71, 0.06);
+  z-index: 900;
+  transition: var(--transition-spring);
+}
+.floating-dock:hover {
+  box-shadow: 0px 14px 36px rgba(15, 90, 71, 0.1);
+  transform: translateX(-50%) translateY(-1px);
+}
+.floating-dock-btn {
+  padding: 8px 18px;
+  font-size: 12.5px;
+  font-weight: 500;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  border-radius: 99px;
+  cursor: pointer;
+  transition: var(--transition-smooth);
+  font-family: var(--font-sans);
+}
+.floating-dock-btn:hover {
+  color: var(--text-primary);
+  background: rgba(15, 90, 71, 0.03);
+}
+.floating-dock-btn.active {
+  background: var(--accent-color);
+  color: #FFFFFF;
+  box-shadow: 0px 4px 10px rgba(15, 90, 71, 0.15);
+}
+
+/* ─── THE DOCUMENT EDITOR PAPER ─── */
+.editor-paper-shell {
+  max-width: 850px;
+  margin: 20px auto 120px auto;
+  background: #FFFFFF;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  box-shadow: 0px 10px 40px rgba(15, 90, 71, 0.02);
+  padding: 60px 80px 80px 80px;
+  position: relative;
+  transition: var(--transition-spring);
+}
+.editor-paper-shell.focus-view {
+  box-shadow: 0px 15px 50px rgba(15, 90, 71, 0.04);
+}
+
+/* ─── MARGIN INTELLIGENCE ─── */
+.editor-block-wrapper {
+  position: relative;
+  margin-bottom: 24px; /* Ample vertical rhythm space (30-50% more spacing) */
+}
+
+.margin-intelligence-note {
+  position: absolute;
+  right: -280px;
+  top: 6px;
+  width: 220px;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+  animation: fadeIn 0.35s ease;
+}
+.margin-bullet {
+  color: var(--accent-color);
+  font-weight: 700;
+  margin-right: 4px;
+}
+
+/* Inline semantic tokens */
+.inline-entity-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 9.5px;
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  background: rgba(0,0,0,0.03);
+  padding: 1px 6px;
+  border-radius: 4px;
+  margin-left: 6px;
+  font-weight: 600;
+  vertical-align: middle;
+}
+
+/* ─── PHYSICAL KANBAN CARDS ─── */
+.physical-note-card {
+  background: var(--bg-card);
+  backdrop-filter: blur(15px);
+  -webkit-backdrop-filter: blur(15px);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  padding: 18px;
+  box-shadow: var(--shadow-sm);
+  cursor: grab;
+  transition: box-shadow 0.3s ease, transform 0.4s cubic-bezier(0.25, 1, 0.5, 1);
+  position: relative;
+}
+.physical-note-card:hover {
+  box-shadow: var(--shadow-md);
+  transform: translateY(-2px) scale(1.01);
+}
+.physical-note-card:active {
+  cursor: grabbing;
+  box-shadow: var(--shadow-lg);
+  transform: scale(1.02);
+}
+/* Alternate subtle rotations for the physical note look */
+.physical-note-card.rot-left {
+  transform: rotate(-1.2deg);
+}
+.physical-note-card.rot-left:hover {
+  transform: translateY(-2px) scale(1.01) rotate(0deg);
+}
+.physical-note-card.rot-right {
+  transform: rotate(1.2deg);
+}
+.physical-note-card.rot-right:hover {
+  transform: translateY(-2px) scale(1.01) rotate(0deg);
+}
+
+/* ─── KNOWLEDGE LANDSCAPE (Living Nodes) ─── */
+.glowing-node {
+  /* Applied to an INNER group that has no translate of its own, so scaling it
+     can't clobber the node's positioning. fill-box + center keeps the scale
+     anchored to the node's own centre (no jitter). */
+  transform-box: fill-box;
+  transform-origin: center;
+  transition: transform 0.18s ease;
+}
+.glowing-node:hover {
+  transform: scale(1.08);
+}
+/* Lifecycle color codings */
+.node-created {
+  fill: #E0EBF7;
+  stroke: #3b82f6;
+}
+.node-growing {
+  fill: #E8F8F3;
+  stroke: #10b981;
+}
+.node-core {
+  fill: var(--accent-light);
+  stroke: var(--accent-color);
+}
+.node-aging {
+  fill: #F2F4F7;
+  stroke: #98a2b3;
+}
+.node-archived {
+  fill: #F9FAFB;
+  stroke: #D0D5DD;
+  opacity: 0.5;
+}
+
+/* Dotted flowing pathway lines */
+@keyframes pathwayFlow {
+  from { stroke-dashoffset: 24; }
+  to { stroke-dashoffset: 0; }
+}
+.neural-pathway {
+  stroke-dasharray: 6, 6;
+  animation: pathwayFlow 1.5s linear infinite;
+}
+
+/* Slide-Peek drawer panel */
+.side-peek-panel {
+  position: fixed;
+  top: 0;
+  right: 0;
+  width: 420px;
+  height: 100vh;
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border-left: 1px solid var(--border-color);
+  box-shadow: -10px 0px 40px rgba(15, 90, 71, 0.03);
+  z-index: 950;
+  padding: 40px;
+  display: flex;
+  flex-direction: column;
+  transform: translateX(100%);
+  transition: var(--transition-spring);
+  overflow-y: auto;
+}
+.side-peek-panel.open {
+  transform: translateX(0);
+}
+
+/* Block editor textareas */
+.editor-block-text {
+  font-family: var(--font-sans);
+  font-size: 15px;
+  color: var(--text-primary);
+  line-height: 1.8;
+  border: none;
+  background: transparent;
+  outline: none;
+  resize: none;
+  width: 100%;
+}
+.editor-block-heading {
+  font-family: var(--font-serif);
+  font-size: 42px;
+  line-height: 1.2;
+  color: var(--text-primary);
+  border: none;
+  background: transparent;
+  outline: none;
+  width: 100%;
+}
+.decision-block-text {
+  border-left: 2.5px solid var(--accent-color);
+  padding-left: 14px;
+  margin-left: 4px;
+  font-weight: 500;
+  font-style: italic;
+  color: var(--accent-color);
+}
+.ai-insight-block-text {
+  color: #0c825a;
+  font-style: italic;
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+/* Custom minimal checkboxes */
+.custom-checkbox-circle {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 1px solid var(--accent-color);
+  display: inline-block;
+  cursor: pointer;
+  margin-top: 5px;
+  flex-shrink: 0;
+  position: relative;
+  transition: var(--transition-smooth);
+}
+.custom-checkbox-circle.checked {
+  background: var(--accent-color);
+}
+.custom-checkbox-circle.checked::after {
+  content: '';
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #FFFFFF;
+}
+
+/* Command Brain trigger modals */
+.command-palette-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: rgba(15, 90, 71, 0.015);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  z-index: 1050;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 140px;
+}
+.command-palette-window {
+  width: 580px;
+  background: rgba(255, 255, 255, 0.9);
+  backdrop-filter: blur(30px);
+  -webkit-backdrop-filter: blur(30px);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  box-shadow: 0px 24px 60px rgba(15, 90, 71, 0.08);
+  overflow: hidden;
+  animation: slideDown 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+@keyframes slideDown {
+  from { transform: translateY(-20px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+.command-palette-input {
+  width: 100%;
+  border: none;
+  border-bottom: 1px solid var(--border-color);
+  padding: 20px 24px;
+  font-size: 15px;
+  outline: none;
+  font-family: var(--font-sans);
+  color: var(--text-primary);
+  background: transparent;
+}
+
+/* ─── ALWAYS VISIBLE GIT-STYLE ACTIVITY LOG (Bottom-Left) ─── */
+.git-activity-log {
+  position: fixed;
+  bottom: 24px;
+  left: 248px; /* clear the fixed sidebar */
+  z-index: 100;
+  max-width: 320px;
+  pointer-events: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: transparent;
+}
+.git-log-item {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: rgba(92, 103, 95, 0.7);
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  padding: 6px 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-color);
+  box-shadow: var(--shadow-sm);
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  animation: logSlide 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+}
+@keyframes logSlide {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Fullscreen expanded editor sheets */
+.workspace-fullscreen {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: var(--bg-canvas);
+  z-index: 1000;
+  padding: 60px 10%;
+  overflow-y: auto;
+  animation: fullscreenFadeIn 0.35s cubic-bezier(0.25, 1, 0.5, 1);
+  display: flex;
+  flex-direction: column;
+}
+@keyframes fullscreenFadeIn {
+  from { opacity: 0; transform: scale(0.98) translateY(10px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+/* 30-Second Reflection closure screen */
+.reflection-closure-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: var(--bg-canvas);
+  z-index: 1200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: fadeIn 0.4s ease;
+}
+.reflection-closure-card {
+  max-width: 480px;
+  width: 100%;
+  padding: 40px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  text-align: center;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Drag indicator column overlays */
+.kanban-col-dragover {
+  background: rgba(15, 90, 71, 0.02) !important;
+  border-color: rgba(15, 90, 71, 0.15) !important;
+}
+.kanban-card-dragging {
+  opacity: 0.4;
+  transform: scale(0.98) rotate(-1deg);
+  border: 1px dashed var(--accent-color);
+}
+.editor-block-handle {
+  position: absolute;
+  left: -20px;
+  top: 50%;
+  transform: translateY(-50%);
+  opacity: 0;
+  cursor: grab;
+  color: var(--text-secondary);
+}
+.editor-block:hover .editor-block-handle {
+  opacity: 0.4;
+}

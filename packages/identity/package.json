@@ -1,0 +1,18 @@
+{
+  "name": "@pronoia/identity",
+  "version": "1.0.0",
+  "type": "module",
+  "private": true,
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc"
+  },
+  "dependencies": {
+    "@pronoia/domain": "*"
+  },
+  "devDependencies": {
+    "@pronoia/ai": "*",
+    "typescript": "^5.0.0"
+  }
+}

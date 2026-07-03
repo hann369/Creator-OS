@@ -1,0 +1,19 @@
+{
+  "name": "@pronoia/services",
+  "version": "1.0.0",
+  "type": "module",
+  "private": true,
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc"
+  },
+  "dependencies": {
+    "@pronoia/domain": "*",
+    "cheerio": "^1.0.0-rc.12"
+  },
+  "devDependencies": {
+    "@pronoia/ai": "*",
+    "typescript": "^5.0.0"
+  }
+}
