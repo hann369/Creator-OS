@@ -4,6 +4,7 @@ import { WebSocketServer } from 'ws';
 import { authRouter } from './controllers/auth.js';
 import { workspaceRouter } from './controllers/workspace.js';
 import { brandDnaRouter } from './controllers/brandDna.js';
+import { reasoningRouter } from './controllers/reasoning.js';
 import { ThinkingWebSocketController } from './controllers/thinking.js';
 
 const app = express();
@@ -13,6 +14,7 @@ app.use(express.json());
 app.use('/api/v1/auth', authRouter);
 app.use('/api/v1/workspaces', workspaceRouter);
 app.use('/api/v1/brand-dna', brandDnaRouter);
+app.use('/api/v1/reasoning', reasoningRouter);
 
 const server = createServer(app);
 

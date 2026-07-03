@@ -10,9 +10,10 @@ import { SettingsView } from './views/SettingsView.js';
 import { MoodboardsView } from './views/MoodboardsView.js';
 import { IdentityView } from './views/IdentityView.js';
 import { IdeationView } from './views/IdeationView.js';
+import { GoalsView } from './views/GoalsView.js';
 import { Sidebar, TopBar, ResourcePlaceholder, SIDEBAR_W, TOPBAR_H, type ResourceView } from './components/Shell.js';
 import { useWorkspace } from './context/WorkspaceContext.js';
-import { reason, aiConfigured } from './lib/reasoning.js';
+import { reason } from './lib/reasoning.js';
 import type { ProjectItem } from './hooks/useProjects.js';
 
 interface AppProps {
@@ -77,8 +78,8 @@ export const App: React.FC<AppProps> = ({ project, onExitProject }) => {
       c.id,
       c.status === 'production' ? 0.8 : c.status === 'script' ? 0.6 : 0.4
     ])),
-    workspaceId: 'main-space'
-  }), [pipelineCards]);
+    workspaceId: project.id
+  }), [pipelineCards, project.id]);
 
   // Display path is PURE: evaluateMultiObjective has no side effects, so simply
   // viewing Today never mutates decision memory. We derive the best action here;
@@ -185,10 +186,6 @@ export const App: React.FC<AppProps> = ({ project, onExitProject }) => {
     const query = searchQuery.trim();
     if (!query) return;
 
-    if (!aiConfigured()) {
-      setCommandResponse('Kein Mistral API Key konfiguriert (VITE_MISTRAL_API_KEY in apps/web/.env).');
-      return;
-    }
 
     setReasoning(null);
     setCommandResponse(null);
@@ -242,6 +239,8 @@ export const App: React.FC<AppProps> = ({ project, onExitProject }) => {
             <IdentityView />
           ) : resource === 'ideation' ? (
             <IdeationView />
+          ) : resource === 'goals' ? (
+            <GoalsView />
           ) : resource ? (
             <ResourcePlaceholder name={resource} />
           ) : (

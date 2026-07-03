@@ -2,28 +2,27 @@ import type { ChatMessage, ReasoningResult } from '@pronoia/ai';
 import type { WorldNode, WorldEdge } from '@pronoia/domain';
 import type { ExtendedContentPipeline } from '../context/WorkspaceContext.js';
 
-// ─── Mistral client (dev: browser-direct; move server-side before deploy) ────
-const MISTRAL_URL = 'https://api.mistral.ai/v1/chat/completions';
-const MODEL = 'mistral-small-latest';
-const KEY = import.meta.env.VITE_MISTRAL_API_KEY as string | undefined;
+// ─── Reasoning via server-side proxy ─────────────────────────────────────────
+// The Mistral key lives ONLY on the API server (apps/api/src/controllers/
+// reasoning.ts). The browser sends messages to /api/v1/reasoning/chat; the key
+// never ships in the bundle. Retrieval + prompt building stay client-side.
 
-export const aiConfigured = () => !!KEY;
+// The server owns the key, so the client always assumes AI is available and lets
+// a clear server error surface if it isn't (503 → shown in the ⌘K footer).
+export const aiConfigured = () => true;
 
 async function mistralChat(messages: ChatMessage[], opts: { json?: boolean; temperature?: number } = {}): Promise<string> {
-  if (!KEY) throw new Error('Kein Mistral API Key (VITE_MISTRAL_API_KEY) konfiguriert.');
-  const res = await fetch(MISTRAL_URL, {
+  const res = await fetch('/api/v1/reasoning/chat', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${KEY}` },
-    body: JSON.stringify({
-      model: MODEL,
-      messages,
-      temperature: opts.temperature ?? 0.3,
-      ...(opts.json ? { response_format: { type: 'json_object' } } : {})
-    })
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ messages, json: opts.json, temperature: opts.temperature })
   });
-  if (!res.ok) throw new Error(`Mistral ${res.status}: ${(await res.text()).slice(0, 200)}`);
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || `Reasoning ${res.status}`);
+  }
   const data = await res.json();
-  return data.choices?.[0]?.message?.content ?? '';
+  return data.content ?? '';
 }
 
 // A minimal ReasoningProvider (shape from @pronoia/ai) backed by the browser
