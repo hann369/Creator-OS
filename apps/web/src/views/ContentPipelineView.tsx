@@ -3,7 +3,8 @@ import { Play, TrendingUp, Plus, X, AlignLeft, Trash2, Youtube, Twitter, Instagr
 import { useWorkspace } from '../context/WorkspaceContext.js';
 import { useRelationships } from '../hooks/useRelationships.js';
 import { useMoodboards } from '../hooks/useMoodboards.js';
-import type { PipelineStatus } from '@pronoia/domain';
+import { useSocialIngest, type SocialPlatform } from '../hooks/useSocialIngest.js';
+import type { PipelineStatus, ContentMetrics } from '@pronoia/domain';
 
 const STAGES: { status: PipelineStatus; label: string; color: string; bg: string }[] = [
   { status: 'idea',       label: 'Idee',        color: '#8b5cf6', bg: 'rgba(139,92,246,0.08)' },
@@ -566,6 +567,10 @@ export const ContentPipelineView: React.FC<ContentPipelineViewProps> = ({ onOpen
                       />
                     </div>
                   ))}
+
+                  <SocialIngestBlock
+                    onApply={(metrics) => updateCard(selectedItem.id, { metrics })}
+                  />
                 </div>
               )}
 
@@ -622,3 +627,47 @@ export const ContentPipelineView: React.FC<ContentPipelineViewProps> = ({ onOpen
   );
 };
 export default ContentPipelineView;
+
+// ─── Auto-pull performance from a platform (credential-free scaffold) ─────────
+// Enter a video/media id → the server pulls metrics and maps them to
+// ContentMetrics (which fires the identity learning loop). Without server API
+// keys the endpoint returns 501 and we show a "connect your account" hint.
+const SocialIngestBlock: React.FC<{ onApply: (metrics: ContentMetrics) => void }> = ({ onApply }) => {
+  const { ingest, loading, error, needsCredentials } = useSocialIngest();
+  const [platform, setPlatform] = useState<SocialPlatform>('youtube');
+  const [postId, setPostId] = useState('');
+  const [done, setDone] = useState<string | null>(null);
+
+  const pull = async () => {
+    if (!postId.trim()) return;
+    setDone(null);
+    const res = await ingest(platform, postId.trim());
+    if (res) { onApply(res.metrics); setDone(res.post.title ? `Gezogen: ${res.post.title}` : 'Metriken übernommen.'); }
+  };
+
+  const inputStyle: React.CSSProperties = { fontSize: '12px', border: '1px solid var(--border-color)', padding: '6px 10px', borderRadius: '4px', outline: 'none', background: 'transparent' };
+
+  return (
+    <div style={{ borderTop: '1px solid var(--border-color)', marginTop: '8px', paddingTop: '14px' }}>
+      <div className="label-mono" style={{ fontSize: '9px', color: 'var(--text-secondary)', letterSpacing: '0.1em', marginBottom: '8px' }}>AUTO-PULL FROM PLATFORM</div>
+      <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+        <select value={platform} onChange={e => setPlatform(e.target.value as SocialPlatform)} style={{ ...inputStyle, cursor: 'pointer' }}>
+          <option value="youtube">YouTube</option>
+          <option value="instagram">Instagram</option>
+        </select>
+        <input value={postId} onChange={e => setPostId(e.target.value)} placeholder={platform === 'youtube' ? 'Video-ID' : 'Media-ID'}
+          onKeyDown={e => { if (e.key === 'Enter') pull(); }} style={{ ...inputStyle, flexGrow: 1, minWidth: 0 }} />
+        <button className="btn-sage-secondary" onClick={pull} disabled={loading} style={{ padding: '6px 12px', fontSize: '11px', whiteSpace: 'nowrap', opacity: loading ? 0.6 : 1 }}>
+          {loading ? '…' : 'Pull'}
+        </button>
+      </div>
+      {needsCredentials && (
+        <p style={{ fontSize: '10px', color: 'var(--text-secondary)', marginTop: '8px', lineHeight: 1.5 }}>
+          Noch kein {needsCredentials === 'youtube' ? 'YouTube' : 'Instagram'}-Zugang verbunden. Setze {needsCredentials === 'youtube' ? 'YOUTUBE_API_KEY' : 'INSTAGRAM_ACCESS_TOKEN'} serverseitig, um automatisch zu ziehen.
+        </p>
+      )}
+      {error && <p style={{ fontSize: '10px', color: '#c0392b', marginTop: '8px' }}>{error}</p>}
+      {done && <p style={{ fontSize: '10px', color: 'var(--accent-color)', marginTop: '8px' }}>{done}</p>}
+    </div>
+  );
+};
