@@ -1,5 +1,6 @@
 import React from 'react';
-import { Calendar, GitBranch, Brain, LayoutGrid, FileText, Package, Users, Target, Search, ChevronLeft, Fingerprint, Lightbulb } from 'lucide-react';
+import { Calendar, GitBranch, Brain, LayoutGrid, FileText, Package, Users, Target, Search, ChevronLeft, Fingerprint, Lightbulb, LogOut } from 'lucide-react';
+import { useAuth } from '../context/AuthContext.js';
 
 export type WorkspaceTab = 'morning' | 'pipeline' | 'brain';
 export type ResourceView = 'ideation' | 'moodboards' | 'identity' | 'documents' | 'assets' | 'people' | 'goals';
@@ -95,8 +96,31 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, resource, projectNa
         {r.icon} {r.label}
       </div>
     ))}
+
+    <SidebarFooter />
   </aside>
 );
+
+const SidebarFooter: React.FC = () => {
+  const { user, signOut } = useAuth();
+  return (
+    <div style={{ marginTop: 'auto', paddingTop: '18px' }}>
+      {user?.email && (
+        <div style={{ fontSize: '10px', color: 'var(--text-secondary)', fontFamily: 'var(--font-mono)', padding: '0 10px 6px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={user.email}>
+          {user.email}
+        </div>
+      )}
+      <div
+        onClick={() => signOut()}
+        style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '7px 10px', borderRadius: '8px', cursor: 'pointer', fontSize: '12px', color: 'var(--text-secondary)' }}
+        onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--accent-light)')}
+        onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+      >
+        <LogOut size={14} /> Sign out
+      </div>
+    </div>
+  );
+};
 
 interface TopBarProps {
   crumbs: string[];
