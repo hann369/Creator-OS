@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
-import { Cpu, Server, Key, Brain, Shield } from 'lucide-react';
+import { Cpu, Server, Key, Brain, Shield, Send } from 'lucide-react';
+import { useTelegramLink } from '../hooks/useTelegramLink.js';
 
-type SettingsTab = 'models' | 'providers' | 'memory' | 'mcp' | 'privacy';
+type SettingsTab = 'models' | 'providers' | 'memory' | 'mcp' | 'privacy' | 'connections';
 
 export const SettingsView: React.FC = () => {
   const [activeTab, setActiveTab] = useState<SettingsTab>('models');
@@ -25,6 +26,7 @@ export const SettingsView: React.FC = () => {
           { key: 'providers', label: 'API Providers', icon: Key },
           { key: 'memory', label: 'AI Memory', icon: Brain },
           { key: 'mcp', label: 'MCP Registry', icon: Server },
+          { key: 'connections', label: 'Connections', icon: Send },
           { key: 'privacy', label: 'Privacy & Safety', icon: Shield }
         ] as const).map((tab) => {
           const Icon = tab.icon;
@@ -168,6 +170,8 @@ export const SettingsView: React.FC = () => {
           </div>
         )}
 
+        {activeTab === 'connections' && <ConnectionsPanel />}
+
         {activeTab === 'privacy' && (
           <div>
             <h2 style={{ fontSize: '20px', fontWeight: 700, marginBottom: '8px' }}>Privacy & Data Compliance</h2>
@@ -186,6 +190,66 @@ export const SettingsView: React.FC = () => {
             </div>
           </div>
         )}
+      </div>
+    </div>
+  );
+};
+
+// ─── Connections: Telegram bot linking ───────────────────────────────────────
+const ConnectionsPanel: React.FC = () => {
+  const { linked, username, code, botUsername, loading, error, connect, disconnect } = useTelegramLink();
+
+  const deepLink = botUsername && code ? `https://t.me/${botUsername}?start=` : null;
+
+  return (
+    <div>
+      <h2 style={{ fontSize: '20px', fontWeight: 700, marginBottom: '8px' }}>Connections</h2>
+      <p style={{ color: 'var(--text-secondary)', fontSize: '14px', marginBottom: '24px' }}>
+        Verbinde externe Kanäle mit deinem Creator OS.
+      </p>
+
+      <div style={{ border: '1px solid var(--border-color)', borderRadius: 'var(--radius-md)', padding: '20px', background: '#FCFCFD' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '6px' }}>
+          <Send size={16} color="var(--accent-color)" />
+          <h4 style={{ fontSize: '15px', fontWeight: 600, color: 'var(--text-primary)', margin: 0 }}>Telegram-Bot</h4>
+        </div>
+        <p style={{ fontSize: '13px', color: 'var(--text-secondary)', margin: '0 0 16px', lineHeight: 1.6 }}>
+          Schick dem Bot eine Nachricht und sie landet als Idee in deiner Ideation-Bank. Morgens pusht er dir dein Briefing.
+        </p>
+
+        {loading ? (
+          <span style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>Lädt…</span>
+        ) : linked ? (
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
+            <span style={{ fontSize: '13px', color: 'var(--accent-color)', fontWeight: 600 }}>
+              ✓ Verbunden{username ? ` als @${username}` : ''}
+            </span>
+            <button className="btn-sage-secondary" style={{ padding: '8px 16px', fontSize: '12px' }} onClick={() => void disconnect()}>
+              Trennen
+            </button>
+          </div>
+        ) : code ? (
+          <div>
+            <p style={{ fontSize: '13px', color: 'var(--text-primary)', marginBottom: '10px' }}>
+              Sende diesen Befehl an den Bot{botUsername ? ` (@${botUsername})` : ''}:
+            </p>
+            <div style={{ fontFamily: 'var(--font-mono)', fontSize: '15px', fontWeight: 700, letterSpacing: '0.04em', padding: '12px 16px', background: 'var(--accent-light)', borderRadius: '8px', color: 'var(--accent-color)', userSelect: 'all' }}>
+              /link {code}
+            </div>
+            {deepLink && (
+              <a href={`https://t.me/${botUsername}`} target="_blank" rel="noreferrer" style={{ display: 'inline-block', marginTop: '12px', fontSize: '12px', color: 'var(--accent-color)' }}>
+                Bot in Telegram öffnen →
+              </a>
+            )}
+            <p style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '10px' }}>Code läuft in 15 Minuten ab.</p>
+          </div>
+        ) : (
+          <button className="btn-sage-primary" style={{ padding: '10px 20px', fontSize: '13px' }} onClick={() => void connect()}>
+            Connect Telegram
+          </button>
+        )}
+
+        {error && <p style={{ fontSize: '12px', color: '#c0392b', marginTop: '12px' }}>{error}</p>}
       </div>
     </div>
   );

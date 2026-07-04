@@ -6,6 +6,7 @@ import { workspaceRouter } from './controllers/workspace.js';
 import { brandDnaRouter } from './controllers/brandDna.js';
 import { reasoningRouter } from './controllers/reasoning.js';
 import { socialRouter } from './controllers/social.js';
+import { telegramRouter } from './controllers/telegram.js';
 import { ThinkingWebSocketController } from './controllers/thinking.js';
 
 const app = express();
@@ -17,6 +18,7 @@ app.use('/api/v1/workspaces', workspaceRouter);
 app.use('/api/v1/brand-dna', brandDnaRouter);
 app.use('/api/v1/reasoning', reasoningRouter);
 app.use('/api/v1/social', socialRouter);
+app.use('/api/v1/telegram', telegramRouter);
 
 const server = createServer(app);
 
