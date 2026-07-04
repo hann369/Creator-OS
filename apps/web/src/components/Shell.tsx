@@ -1,6 +1,8 @@
 import React from 'react';
 import { Calendar, GitBranch, Brain, LayoutGrid, FileText, Package, Users, Target, Search, ChevronLeft, Fingerprint, Lightbulb, LogOut } from 'lucide-react';
 import { useAuth } from '../context/AuthContext.js';
+import { useGoals } from '../hooks/useGoals.js';
+import { userInitial } from '../lib/user.js';
 
 export type WorkspaceTab = 'morning' | 'pipeline' | 'brain';
 export type ResourceView = 'ideation' | 'moodboards' | 'identity' | 'documents' | 'assets' | 'people' | 'goals';
@@ -84,10 +86,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, resource, projectNa
       style={{ padding: '0 10px', cursor: 'pointer' }}
     >
       <div style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '6px' }}>{projectName}</div>
-      <div style={{ height: '3px', background: 'rgba(0,0,0,0.06)', borderRadius: '2px', overflow: 'hidden' }}>
-        <div style={{ width: '68%', height: '100%', background: 'var(--accent-color)' }} />
-      </div>
-      <div style={{ fontSize: '9px', color: 'var(--text-secondary)', fontFamily: 'var(--font-mono)', marginTop: '4px' }}>68%</div>
+      <ProjectProgress />
     </div>
 
     <div style={groupLabel}>RESOURCES</div>
@@ -100,6 +99,29 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, resource, projectNa
     <SidebarFooter />
   </aside>
 );
+
+// Real project progress = average completion of the active goals (no longer a
+// hardcoded 68%). With no goals set yet, it invites the creator to add one.
+const ProjectProgress: React.FC = () => {
+  const { goals } = useGoals();
+  const active = goals.filter(g => g.status === 'active');
+  if (active.length === 0) {
+    return (
+      <div style={{ fontSize: '9px', color: 'var(--text-secondary)', fontFamily: 'var(--font-mono)', marginTop: '2px' }}>
+        Noch keine Ziele
+      </div>
+    );
+  }
+  const pct = Math.round((active.reduce((sum, g) => sum + (g.progress ?? 0), 0) / active.length) * 100);
+  return (
+    <>
+      <div style={{ height: '3px', background: 'rgba(0,0,0,0.06)', borderRadius: '2px', overflow: 'hidden' }}>
+        <div style={{ width: `${pct}%`, height: '100%', background: 'var(--accent-color)' }} />
+      </div>
+      <div style={{ fontSize: '9px', color: 'var(--text-secondary)', fontFamily: 'var(--font-mono)', marginTop: '4px' }}>{pct}%</div>
+    </>
+  );
+};
 
 const SidebarFooter: React.FC = () => {
   const { user, signOut } = useAuth();
@@ -128,7 +150,9 @@ interface TopBarProps {
   onHome?: () => void;
 }
 
-export const TopBar: React.FC<TopBarProps> = ({ crumbs, onSearch, onHome }) => (
+export const TopBar: React.FC<TopBarProps> = ({ crumbs, onSearch, onHome }) => {
+  const { user } = useAuth();
+  return (
   <div style={{
     position: 'fixed', top: 0, left: `${SIDEBAR_W}px`, right: 0, height: `${TOPBAR_H}px`, zIndex: 880,
     background: 'rgba(250, 249, 246, 0.8)', backdropFilter: 'blur(10px)',
@@ -154,11 +178,12 @@ export const TopBar: React.FC<TopBarProps> = ({ crumbs, onSearch, onHome }) => (
       }}>
         <Search size={12} /> <span style={{ fontFamily: 'var(--font-mono)' }}>⌘K</span>
       </button>
-      <div style={{ width: '26px', height: '26px', borderRadius: '50%', background: 'var(--accent-color)', color: '#fff',
-        display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '11px', fontWeight: 600 }}>H</div>
+      <div title={user?.email ?? undefined} style={{ width: '26px', height: '26px', borderRadius: '50%', background: 'var(--accent-color)', color: '#fff',
+        display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '11px', fontWeight: 600 }}>{userInitial(user)}</div>
     </div>
   </div>
-);
+  );
+};
 
 export const ResourcePlaceholder: React.FC<{ name: ResourceView }> = ({ name }) => (
   <div className="view-body" style={{ padding: '80px 40px', textAlign: 'center' }}>

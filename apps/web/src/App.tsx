@@ -11,8 +11,14 @@ import { MoodboardsView } from './views/MoodboardsView.js';
 import { IdentityView } from './views/IdentityView.js';
 import { IdeationView } from './views/IdeationView.js';
 import { GoalsView } from './views/GoalsView.js';
+import { DocumentsView } from './views/DocumentsView.js';
+import { AssetsView } from './views/AssetsView.js';
+import { PeopleView } from './views/PeopleView.js';
 import { Sidebar, TopBar, ResourcePlaceholder, SIDEBAR_W, TOPBAR_H, type ResourceView } from './components/Shell.js';
 import { useWorkspace } from './context/WorkspaceContext.js';
+import { useAuth } from './context/AuthContext.js';
+import { useGoals } from './hooks/useGoals.js';
+import { displayName } from './lib/user.js';
 import { reason } from './lib/reasoning.js';
 import type { ProjectItem } from './hooks/useProjects.js';
 
@@ -31,6 +37,12 @@ export const App: React.FC<AppProps> = ({ project, onExitProject }) => {
     startSession,
     endSession
   } = useWorkspace();
+  const { user } = useAuth();
+  const { goals } = useGoals();
+
+  // The goal the executive engine reasons against — the creator's primary active
+  // goal, no longer a hardcoded "Reach 100k Subscribers".
+  const primaryGoal = useMemo(() => goals.find(g => g.status === 'active') ?? goals[0] ?? null, [goals]);
 
   const [activeTab, setActiveTab] = useState<'morning' | 'pipeline' | 'brain'>('morning');
   const [resource, setResource] = useState<ResourceView | null>(null);
@@ -167,7 +179,7 @@ export const App: React.FC<AppProps> = ({ project, onExitProject }) => {
     const cardId = chosenCard?.id ?? pipelineCards[0]?.id ?? 'c1';
     const cardTitle = chosenCard?.title ?? pipelineCards[0]?.title ?? executiveDecision.actionDescription;
 
-    startSession(cardTitle, 'Reach 100k Subscribers');
+    startSession(cardTitle, primaryGoal?.title ?? 'Dein Ziel');
     setShowMorningBanner(false);
     setFocusedCardId(cardId);
     setFocusedCardTitle(cardTitle);
@@ -241,6 +253,12 @@ export const App: React.FC<AppProps> = ({ project, onExitProject }) => {
             <IdeationView />
           ) : resource === 'goals' ? (
             <GoalsView />
+          ) : resource === 'documents' ? (
+            <DocumentsView />
+          ) : resource === 'assets' ? (
+            <AssetsView />
+          ) : resource === 'people' ? (
+            <PeopleView />
           ) : resource ? (
             <ResourcePlaceholder name={resource} />
           ) : (
@@ -249,7 +267,7 @@ export const App: React.FC<AppProps> = ({ project, onExitProject }) => {
             <div className="view-body">
               {showMorningBanner ? (
                 <div style={{ maxWidth: '800px', margin: '40px auto 0 auto', paddingBottom: '40px', borderBottom: '1px solid var(--border-color)' }}>
-                  <h1 className="title-serif" style={{ fontSize: '48px', color: 'var(--text-primary)', marginBottom: '8px' }}>Good morning, Hannes.</h1>
+                  <h1 className="title-serif" style={{ fontSize: '48px', color: 'var(--text-primary)', marginBottom: '8px' }}>Good morning, {displayName(user)}.</h1>
                   <p className="title-serif" style={{ fontStyle: 'italic', fontSize: '18px', color: 'var(--text-secondary)', marginBottom: '24px', lineHeight: '1.6' }}>
                     Heute würde ich <strong>"{executiveDecision.actionDescription}"</strong> machen.
                   </p>
@@ -281,9 +299,18 @@ export const App: React.FC<AppProps> = ({ project, onExitProject }) => {
               ) : (
                 <div style={{ maxWidth: '800px', margin: '80px auto', textAlign: 'center' }}>
                   <h2 className="title-serif" style={{ fontSize: '32px', color: 'var(--text-primary)', marginBottom: '16px' }}>Ready to write?</h2>
-                  <button className="btn-sage-primary" onClick={() => handleOpenCardEditor('o_c1', 'Why Multi-Agent Systems Will Replace Solo AI')} style={{ padding: '10px 24px' }}>
-                    Re-open Focus workspace
-                  </button>
+                  {(() => {
+                    // Re-open the card the executive engine chose (or the first in the
+                    // pipeline) — never a hardcoded demo card.
+                    const reopen = chosenCard ?? pipelineCards[0];
+                    return reopen ? (
+                      <button className="btn-sage-primary" onClick={() => handleOpenCardEditor(reopen.id, reopen.title)} style={{ padding: '10px 24px' }}>
+                        Re-open Focus workspace
+                      </button>
+                    ) : (
+                      <p style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>Noch keine Karte in der Pipeline — leg in „Pipeline" eine an.</p>
+                    );
+                  })()}
                 </div>
               )}
 

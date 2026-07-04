@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import type { PipelineStatus, WorldNode, WorldEdge, CognitiveSession } from '@pronoia/domain';
 import { supabase } from '../lib/supabase.js';
-import { getActiveWorkspaceId, isDefaultWorkspace } from '../lib/workspace.js';
+import { getActiveWorkspaceId } from '../lib/workspace.js';
 import { runIdentityLearning } from '../lib/identityLearning.js';
 import {
   entityStore,
@@ -82,29 +82,6 @@ function buildMirrorNode(card: { id: string; title: string; hook?: string; statu
 
 // ─── Supabase Row ↔ Domain Model mappers moved to entityStore ───────────────────
 
-// ─── Seed data (used only if Supabase is empty) ─────────────────────────────
-
-const SEED_NODES: WorldNode[] = [
-  { id: '1', workspaceId: getActiveWorkspaceId(), name: 'Multi-Agent Workspaces', type: 'concept', description: 'Autonomous agent coordination networks executing tasks.', metadata: { x: 280, y: 150 }, confidence: { extractionConfidence: 0.95, reasoningConfidence: 0.9, relationshipConfidence: 0.9, verificationConfidence: 1.0 }, lifecycleState: 'core_knowledge', sourceCount: 8, lastVerified: new Date(), derivedFrom: [], createdAt: new Date(), updatedAt: new Date() },
-  { id: '2', workspaceId: getActiveWorkspaceId(), name: 'Reach 100k Subscribers', type: 'goal', description: 'Audience growth target across YouTube and Newsletter.', metadata: { x: 580, y: 120 }, confidence: { extractionConfidence: 0.91, reasoningConfidence: 0.85, relationshipConfidence: 0.9, verificationConfidence: 1.0 }, lifecycleState: 'growing', sourceCount: 4, lastVerified: new Date(), derivedFrom: [], createdAt: new Date(), updatedAt: new Date() },
-  { id: '3', workspaceId: getActiveWorkspaceId(), name: 'Cognitive OS Architecture', type: 'concept', description: 'Memory hierarchy and prefrontal cortex engine layout.', metadata: { x: 420, y: 320 }, confidence: { extractionConfidence: 0.94, reasoningConfidence: 0.95, relationshipConfidence: 0.9, verificationConfidence: 1.0 }, lifecycleState: 'core_knowledge', sourceCount: 12, lastVerified: new Date(), derivedFrom: [], createdAt: new Date(), updatedAt: new Date() },
-  { id: '4', workspaceId: getActiveWorkspaceId(), name: 'CRDT Latency Sync', type: 'problem', description: 'Local-first conflict resolution sync overhead.', metadata: { x: 180, y: 410 }, confidence: { extractionConfidence: 0.78, reasoningConfidence: 0.8, relationshipConfidence: 0.75, verificationConfidence: 0.8 }, lifecycleState: 'aging', sourceCount: 2, lastVerified: new Date(), derivedFrom: [], createdAt: new Date(), updatedAt: new Date() },
-  { id: '5', workspaceId: getActiveWorkspaceId(), name: 'Prompt Routing Protocols', type: 'concept', description: 'Background query routing configurations.', metadata: { x: 740, y: 380 }, confidence: { extractionConfidence: 0.82, reasoningConfidence: 0.85, relationshipConfidence: 0.8, verificationConfidence: 0.9 }, lifecycleState: 'created', sourceCount: 1, lastVerified: new Date(), derivedFrom: [], createdAt: new Date(), updatedAt: new Date() }
-];
-
-const SEED_EDGES: WorldEdge[] = [
-  { id: 'e1', workspaceId: getActiveWorkspaceId(), sourceId: '1', targetId: '2', weight: 0.9, relationshipType: 'supports', confidence: { extractionConfidence: 0.9, reasoningConfidence: 0.8, relationshipConfidence: 0.9, verificationConfidence: 1.0 }, createdAt: new Date() },
-  { id: 'e2', workspaceId: getActiveWorkspaceId(), sourceId: '3', targetId: '1', weight: 0.8, relationshipType: 'requires', confidence: { extractionConfidence: 0.9, reasoningConfidence: 0.85, relationshipConfidence: 0.9, verificationConfidence: 1.0 }, createdAt: new Date() },
-  { id: 'e3', workspaceId: getActiveWorkspaceId(), sourceId: '3', targetId: '4', weight: 0.7, relationshipType: 'contradicts', confidence: { extractionConfidence: 0.8, reasoningConfidence: 0.7, relationshipConfidence: 0.8, verificationConfidence: 0.9 }, createdAt: new Date() },
-  { id: 'e4', workspaceId: getActiveWorkspaceId(), sourceId: '5', targetId: '2', weight: 0.6, relationshipType: 'causes', confidence: { extractionConfidence: 0.85, reasoningConfidence: 0.8, relationshipConfidence: 0.8, verificationConfidence: 0.9 }, createdAt: new Date() }
-];
-
-const SEED_CARDS: ExtendedContentPipeline[] = [
-  { id: 'c1', workspaceId: getActiveWorkspaceId(), title: 'Why Multi-Agent Systems Will Replace Solo AI Assistants', hook: 'In 6 months, nobody will use a single AI.', format: 'longform', status: 'script', platforms: ['youtube'], trendScore: 8.7, executivePriority: 9.1, linkedNodeIds: ['1', '4'], markdown: '# Why Multi-Agent Systems Will Replace Solo AI Assistants\n\nSolo assistants like ChatGPT are static. The future is collaborative teams of agents.', checklists: [{ id: 'chk-1', text: 'Define agent coordination problems', done: true }, { id: 'chk-2', text: 'Write visual layout draft', done: false }], attachments: [{ id: 'att-1', name: 'Agentic Research.pdf', type: 'pdf' }], comments: [{ id: 'com-1', author: 'Pronoia Brain', text: 'High correlation with 100k goal. Strategic value +14%.', createdAt: '10:41' }], createdAt: new Date(), updatedAt: new Date() },
-  { id: 'c2', workspaceId: getActiveWorkspaceId(), title: 'The Cognitive OS I Built to Think for Me', hook: 'What if your second brain could make decisions?', format: 'longform', status: 'outline', platforms: ['youtube', 'x'], trendScore: 9.2, executivePriority: 8.6, linkedNodeIds: ['4'], markdown: '# The Cognitive OS I Built to Think for Me\n\nIntegrating world model indexing with causal mapping.', checklists: [{ id: 'chk-4', text: 'Ingest Obsidian vault', done: true }], attachments: [], comments: [], createdAt: new Date(), updatedAt: new Date() },
-  { id: 'c3', workspaceId: getActiveWorkspaceId(), title: 'I Gave an AI My Entire Note Archive', hook: '5 years of notes. One AI. What did it find?', format: 'vlog', status: 'production', platforms: ['youtube'], trendScore: 7.4, executivePriority: 7.8, linkedNodeIds: ['1'], markdown: '# I Gave an AI My Entire Note Archive\n\nWhat happens when 5000+ notes are parsed into entities.', checklists: [{ id: 'chk-6', text: 'Clean Obsidian export', done: true }], attachments: [], comments: [], createdAt: new Date(), updatedAt: new Date() }
-];
-
 // ─── Provider ────────────────────────────────────────────────────────────────
 
 export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -118,7 +95,7 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   });
   const [activityLogs, setActivityLogs] = useState<string[]>(() => {
     const saved = localStorage.getItem('pronoia_logs');
-    return saved ? JSON.parse(saved) : ['09:41 Ingested Ali Abdaal video', '09:44 Merged similar concept nodes', '09:48 Calibrated goal priority (+0.05)'];
+    return saved ? JSON.parse(saved) : [];
   });
 
   const addActivityLog = useCallback((msg: string) => {
@@ -141,34 +118,11 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           entityStore.loadCards(getActiveWorkspaceId())
         ]);
 
-        // Seed the demo content ONLY for the default project. A fresh project
-        // starts empty so each project is its own space.
-        if (nodesData.length === 0 && isDefaultWorkspace()) {
-          for (const node of SEED_NODES) {
-            await entityStore.upsert(node as any);
-          }
-          setNodes(SEED_NODES);
-        } else {
-          setNodes(nodesData);
-        }
-
-        if (edgesData.length === 0 && isDefaultWorkspace()) {
-          for (const edge of SEED_EDGES) {
-            await entityStore.saveEdge(edge);
-          }
-          setEdges(SEED_EDGES);
-        } else {
-          setEdges(edgesData);
-        }
-
-        if (cardsData.length === 0 && isDefaultWorkspace()) {
-          for (const card of SEED_CARDS) {
-            await entityStore.upsert({ ...card, type: 'pipeline_card' } as any);
-          }
-          setPipelineCards(SEED_CARDS);
-        } else {
-          setPipelineCards(cardsData);
-        }
+        // Every workspace starts empty — the UI carries its own empty states. No
+        // demo/seed content is injected.
+        setNodes(nodesData);
+        setEdges(edgesData);
+        setPipelineCards(cardsData);
       } catch (err) {
         console.warn('entityStore load failed — falling back to local state', err);
       } finally {

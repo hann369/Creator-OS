@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
 import { Search, Plus, X } from 'lucide-react';
+import { useAuth } from '../context/AuthContext.js';
+import { userInitial } from '../lib/user.js';
 import type { ProjectItem } from '../hooks/useProjects.js';
 
 interface ProjectsScreenProps {
@@ -11,6 +13,7 @@ interface ProjectsScreenProps {
 // The gateway shown before the workspace: only whitespace, the projects, and the
 // top-right bar. Pick a project to enter its pages (Today / Pipeline / Brain / …).
 export const ProjectsScreen: React.FC<ProjectsScreenProps> = ({ projects, onOpen, onCreate }) => {
+  const { user } = useAuth();
   const [creating, setCreating] = useState(false);
   const [name, setName] = useState('');
 
@@ -42,8 +45,8 @@ export const ProjectsScreen: React.FC<ProjectsScreenProps> = ({ projects, onOpen
           }}>
             <Search size={12} /> <span style={{ fontFamily: 'var(--font-mono)' }}>⌘K</span>
           </button>
-          <div style={{ width: '26px', height: '26px', borderRadius: '50%', background: 'var(--accent-color)', color: '#fff',
-            display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '11px', fontWeight: 600 }}>H</div>
+          <div title={user?.email ?? undefined} style={{ width: '26px', height: '26px', borderRadius: '50%', background: 'var(--accent-color)', color: '#fff',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '11px', fontWeight: 600 }}>{userInitial(user)}</div>
         </div>
       </div>
 

@@ -4,6 +4,9 @@ import { useWorkspace } from '../context/WorkspaceContext.js';
 import { useRelationships } from '../hooks/useRelationships.js';
 import { useMoodboards } from '../hooks/useMoodboards.js';
 import { useSocialIngest, type SocialPlatform } from '../hooks/useSocialIngest.js';
+import { useIdentity } from '../hooks/useIdentity.js';
+import { useAuth } from '../context/AuthContext.js';
+import { displayName } from '../lib/user.js';
 import type { PipelineStatus, ContentMetrics } from '@pronoia/domain';
 
 const STAGES: { status: PipelineStatus; label: string; color: string; bg: string }[] = [
@@ -42,6 +45,8 @@ export const ContentPipelineView: React.FC<ContentPipelineViewProps> = ({ onOpen
 
   const { relationships } = useRelationships();
   const { boards } = useMoodboards();
+  const { identities, activeIdentity } = useIdentity();
+  const { user } = useAuth();
 
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
   const [draggedItemId, setDraggedItemId] = useState<string | null>(null);
@@ -73,6 +78,18 @@ export const ContentPipelineView: React.FC<ContentPipelineViewProps> = ({ onOpen
   const linkedMoodboard = boards.find(b =>
     b.id === linkedMoodboardRel?.sourceId || b.attachedCardId === selectedItem?.id
   );
+
+  // ─── See → Do: close the identity learning loop ─────────────────────────────
+  // The identity that styles this card (via its linked moodboard), else the
+  // project's active one. Its hooks are re-ranked by real performance, so the
+  // top ones are the data-driven default for the next piece. Only suggest while
+  // the hook is still empty — never overwrite what the user wrote.
+  const styledByIdentity = linkedMoodboard
+    ? identities.find(i => i.moodboardIds.includes(linkedMoodboard.id)) ?? activeIdentity
+    : activeIdentity;
+  const hookSuggestions = !selectedItem?.hook?.trim() && styledByIdentity
+    ? styledByIdentity.hooks.slice(0, 3)
+    : [];
 
   // ─── Graph linkage for the open card (single source of truth) ──────────────
   const cardMirrorId = selectedItem ? cardNodeId(selectedItem.id) : null;
@@ -198,7 +215,7 @@ export const ContentPipelineView: React.FC<ContentPipelineViewProps> = ({ onOpen
     const currentComments = card.comments || [];
     const newComment = {
       id: `com-${crypto.randomUUID().slice(0, 8)}`,
-      author: 'Hannes',
+      author: displayName(user),
       text: newCommentText.trim(),
       createdAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
     };
@@ -400,6 +417,27 @@ export const ContentPipelineView: React.FC<ContentPipelineViewProps> = ({ onOpen
                       placeholder="Brief hook or subtitle..."
                       style={{ width: '100%', border: 'none', background: 'rgba(0,0,0,0.02)', padding: '10px', fontSize: '12px', resize: 'none', outline: 'none', borderRadius: '4px', height: '60px', fontFamily: 'var(--font-sans)', lineHeight: '1.6' }}
                     />
+                    {hookSuggestions.length > 0 && (
+                      <div style={{ marginTop: '10px' }}>
+                        <div className="label-mono" style={{ fontSize: '9px', color: 'var(--text-secondary)', letterSpacing: '0.08em', marginBottom: '6px' }}>
+                          AUS DEINER BRAND IDENTITY · NACH PERFORMANCE GERANKT
+                        </div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                          {hookSuggestions.map((h, i) => (
+                            <button
+                              key={i}
+                              type="button"
+                              onClick={() => updateCard(selectedItem.id, { hook: h })}
+                              className="command-palette-item"
+                              style={{ display: 'flex', alignItems: 'center', gap: '8px', textAlign: 'left', width: '100%', fontSize: '12px', color: 'var(--text-primary)', padding: '8px 10px', background: 'rgba(15,90,71,0.04)', border: '1px solid rgba(15,90,71,0.06)', borderRadius: '6px', cursor: 'pointer' }}
+                            >
+                              <span style={{ fontSize: '10px', color: 'var(--accent-color)', fontFamily: 'var(--font-mono)', fontWeight: 700 }}>{i + 1}</span>
+                              {h}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </div>
 
                   {linkedMoodboard && (
