@@ -3,15 +3,17 @@ import { supabaseAdmin } from '../supabase.js';
 import { lookupEcosystemTelegramId } from '../ecosystem.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Creator OS Telegram bot — its OWN bot (separate token/webhook from the
-// ecosystem's Life OS bot). Two jobs:
-//   1. Capture: a linked user's messages become ideas in the `ideas` table.
-//   2. Briefing: a cron pushes the morning briefing to linked users.
+// Creator OS Telegram bot — a thin CLIENT of Pronoia Core (its own bot, separate
+// token/webhook from the Life OS bot). It holds no intelligence of its own: it
+// captures into, and reads from, the same Supabase data the web app uses.
 //
-// Linking: the user clicks "Connect Telegram" in Settings → POST /connect (authed
-// by their Supabase JWT). We first try to REUSE an existing Telegram id from the
-// ecosystem (by email); if found, the link completes instantly. Otherwise we hand
-// back a one-time code the user sends as `/link <code>` to the bot.
+// Capabilities in this slice:
+//   • Capture with PROJECT ROUTING — a message becomes an idea in the *right*
+//     project. If an active project is set it routes there; otherwise the bot
+//     asks with inline buttons ("Zu welchem Projekt?"). This is the immediately
+//     important behaviour: the bot must understand which project an idea is for.
+//   • Linking (/link code or ecosystem email reuse), status, disconnect.
+//   • Morning briefing (cron push).
 //
 // All bot-side writes use the service-role client (bypasses RLS) and set owner_id
 // explicitly, since the bot has no auth.uid().
@@ -24,27 +26,51 @@ const WEBHOOK_SECRET = () => process.env.TELEGRAM_WEBHOOK_SECRET;
 // Vercel Cron auto-sends `Authorization: Bearer $CRON_SECRET`; also allow a
 // dedicated TELEGRAM_CRON_SECRET via header/query for manual triggers.
 const CRON_SECRET = () => process.env.CRON_SECRET || process.env.TELEGRAM_CRON_SECRET;
-const WORKSPACE = 'main-space'; // matches getActiveWorkspaceId() default in the web app
+const DEFAULT_WORKSPACE = 'main-space'; // matches getActiveWorkspaceId() default in the web app
 
 const CODE_TTL_MS = 15 * 60 * 1000;
 
-// ─── Telegram API helper ─────────────────────────────────────────────────────
-async function tgSend(chatId: number | string, text: string): Promise<void> {
+// ─── Telegram API helpers ────────────────────────────────────────────────────
+interface InlineKeyboard { inline_keyboard: Array<Array<{ text: string; callback_data: string }>> }
+
+async function tgApi(method: string, body: Record<string, unknown>): Promise<void> {
   const token = BOT_TOKEN();
-  if (!token) { console.warn('[telegram] TELEGRAM_BOT_TOKEN unset — cannot send'); return; }
+  if (!token) { console.warn(`[telegram] TELEGRAM_BOT_TOKEN unset — cannot call ${method}`); return; }
   try {
-    await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ chat_id: chatId, text, parse_mode: 'Markdown', disable_web_page_preview: true }),
+    await fetch(`https://api.telegram.org/bot${token}/${method}`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
     });
   } catch (err) {
-    console.error('[telegram] sendMessage failed:', (err as Error).message);
+    console.error(`[telegram] ${method} failed:`, (err as Error).message);
   }
 }
 
+function tgSend(chatId: number | string, text: string, keyboard?: InlineKeyboard): Promise<void> {
+  return tgApi('sendMessage', {
+    chat_id: chatId, text, parse_mode: 'Markdown', disable_web_page_preview: true,
+    ...(keyboard ? { reply_markup: keyboard } : {}),
+  });
+}
+function tgEditText(chatId: number | string, messageId: number, text: string, keyboard?: InlineKeyboard): Promise<void> {
+  return tgApi('editMessageText', {
+    chat_id: chatId, message_id: messageId, text, parse_mode: 'Markdown',
+    ...(keyboard ? { reply_markup: keyboard } : { reply_markup: { inline_keyboard: [] } }),
+  });
+}
+function tgAnswerCallback(callbackId: string, text?: string): Promise<void> {
+  return tgApi('answerCallbackQuery', { callback_query_id: callbackId, ...(text ? { text } : {}) });
+}
+
+/** Escape Telegram legacy-Markdown special chars in dynamic text. */
+function md(s: string): string {
+  return s.replace(/([_*\[\]`])/g, '\\$1');
+}
+
+function projectKeyboard(projects: Array<{ id: string; name: string }>, action: 'pick' | 'setactive'): InlineKeyboard {
+  return { inline_keyboard: projects.slice(0, 12).map(p => [{ text: p.name, callback_data: `${action}:${p.id}` }]) };
+}
+
 function newCode(): string {
-  // Short, unambiguous, uppercase code (no 0/O/1/I).
   const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
   const bytes = crypto.getRandomValues(new Uint8Array(6));
   return Array.from(bytes, b => alphabet[b % alphabet.length]).join('');
@@ -60,12 +86,40 @@ async function authUser(req: Request): Promise<{ id: string; email?: string } | 
   return { id: data.user.id, email: data.user.email ?? undefined };
 }
 
-// ─── Idea capture ─────────────────────────────────────────────────────────────
-async function captureIdea(ownerId: string, title: string): Promise<void> {
+// ─── Data access (thin — same tables the web uses) ───────────────────────────
+interface Link { owner_id: string; linked_at: string | null; active_project_id: string | null; pending_idea: string | null; }
+
+async function getLink(telegramUserId: number): Promise<Link | null> {
+  const { data } = await supabaseAdmin
+    .from('telegram_links').select('owner_id, linked_at, active_project_id, pending_idea')
+    .eq('telegram_user_id', telegramUserId).maybeSingle();
+  return (data as Link) ?? null;
+}
+
+async function getProjects(ownerId: string): Promise<Array<{ id: string; name: string }>> {
+  const { data } = await supabaseAdmin
+    .from('projects').select('id, name').eq('owner_id', ownerId).order('created_at', { ascending: true });
+  return data ?? [];
+}
+
+function projectName(projects: Array<{ id: string; name: string }>, id: string | null): string | null {
+  return projects.find(p => p.id === id)?.name ?? null;
+}
+
+async function setActiveProject(ownerId: string, projectId: string): Promise<void> {
+  await supabaseAdmin.from('telegram_links').update({ active_project_id: projectId, updated_at: new Date().toISOString() }).eq('owner_id', ownerId);
+}
+async function setPendingIdea(ownerId: string, text: string | null): Promise<void> {
+  await supabaseAdmin.from('telegram_links').update({ pending_idea: text, updated_at: new Date().toISOString() }).eq('owner_id', ownerId);
+}
+
+/** Insert an idea, routed to a project. project_id is the real linkage; workspace_id
+ *  mirrors it so it surfaces in that project once the web scopes by project. */
+async function captureIdea(ownerId: string, title: string, projectId: string | null): Promise<void> {
   const now = new Date().toISOString();
   const id = `idea-${crypto.randomUUID().slice(0, 8)}`;
   const { error } = await supabaseAdmin.from('ideas').insert({
-    id, workspace_id: WORKSPACE, owner_id: ownerId,
+    id, workspace_id: projectId ?? DEFAULT_WORKSPACE, owner_id: ownerId, project_id: projectId,
     title: title.slice(0, 500), status: 'Idea', rating: 0, archived: false,
     created_at: now, updated_at: now,
   });
@@ -73,10 +127,9 @@ async function captureIdea(ownerId: string, title: string): Promise<void> {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 1. Webhook — Telegram delivers updates here.
+// Webhook — Telegram delivers updates here.
 // ─────────────────────────────────────────────────────────────────────────────
 telegramRouter.post('/webhook', async (req: Request, res: Response) => {
-  // Telegram echoes the secret configured via setWebhook in this header.
   const secret = req.headers['x-telegram-bot-api-secret-token'];
   if (!WEBHOOK_SECRET() || secret !== WEBHOOK_SECRET()) {
     return res.status(401).json({ error: 'Unauthorized' });
@@ -84,7 +137,8 @@ telegramRouter.post('/webhook', async (req: Request, res: Response) => {
   // On Vercel serverless the function is frozen once the response is sent, so we
   // must finish all DB work + replies BEFORE responding — never ack-then-process.
   try {
-    await processUpdate(req.body);
+    if (req.body?.callback_query) await processCallback(req.body.callback_query);
+    else await processUpdate(req.body);
   } catch (err) {
     console.error('[telegram] webhook processing error:', (err as Error).message);
   }
@@ -101,11 +155,11 @@ async function processUpdate(update: any): Promise<void> {
 
   const trimmed = text.trim();
   try {
+    // ── Command router (extensible; non-commands are captured as ideas) ──
     if (trimmed === '/start') {
-      await tgSend(chatId, 'Willkommen bei *Pronoia Creator OS* 🎬\n\nVerbinde dein Konto in den App-Einstellungen → *Connect Telegram*. Danach wird jede Nachricht hier zu einer Idee in deiner Ideation-Bank.');
+      await tgSend(chatId, 'Willkommen bei *Pronoia Creator OS* 🎬\n\nVerbinde dein Konto in der App → *Einstellungen* → *Connect Telegram* und sende mir `/link DEIN-CODE`.\n\nDanach wird jede Nachricht zu einer Idee — ich frage dich, in welches Projekt sie gehört. Mit `/projects` wählst du dein aktives Projekt.');
       return;
     }
-
     if (trimmed.toLowerCase().startsWith('/link')) {
       const code = trimmed.split(/\s+/)[1]?.toUpperCase();
       if (!code) { await tgSend(chatId, 'Nutzung: `/link DEIN-CODE` (Code aus den App-Einstellungen).'); return; }
@@ -113,22 +167,98 @@ async function processUpdate(update: any): Promise<void> {
       return;
     }
 
-    // Any other text → capture as an idea for the linked user.
-    const { data: link } = await supabaseAdmin
-      .from('telegram_links').select('owner_id, linked_at')
-      .eq('telegram_user_id', fromId).maybeSingle();
-
+    const link = await getLink(fromId);
     if (!link?.linked_at) {
       await tgSend(chatId, 'Noch nicht verbunden. Öffne die App → *Einstellungen* → *Connect Telegram* und sende mir `/link DEIN-CODE`.');
       return;
     }
 
-    await captureIdea(link.owner_id, trimmed);
-    await tgSend(chatId, `💡 Idee gespeichert: _${trimmed.slice(0, 80)}_`);
+    if (trimmed.toLowerCase().startsWith('/projects') || trimmed.toLowerCase().startsWith('/project')) {
+      const projects = await getProjects(link.owner_id);
+      if (projects.length === 0) { await tgSend(chatId, 'Noch keine Projekte gefunden. Öffne einmal die App, damit deine Projekte synchronisiert werden.'); return; }
+      const active = projectName(projects, link.active_project_id);
+      await tgSend(chatId, `📂 Aktives Projekt${active ? `: *${md(active)}*` : ' — noch keins gewählt'}.\n\nWähle dein aktives Projekt:`, projectKeyboard(projects, 'setactive'));
+      return;
+    }
+
+    // ── Default: capture as an idea, routed to a project ──
+    await routeIdea(link, { chatId, text: trimmed });
   } catch (err) {
     console.error('[telegram] processUpdate error:', (err as Error).message);
     await tgSend(chatId, 'Kurzer Fehler beim Speichern — bitte nochmal versuchen.');
   }
+}
+
+/** Decide where a captured idea goes: active project, the only project, or ask. */
+async function routeIdea(link: Link, msg: { chatId: number; text: string }): Promise<void> {
+  const projects = await getProjects(link.owner_id);
+
+  // Active project set & still valid → route straight there.
+  const activeName = projectName(projects, link.active_project_id);
+  if (link.active_project_id && activeName) {
+    await captureIdea(link.owner_id, msg.text, link.active_project_id);
+    await tgSend(msg.chatId, `💡 Idee gespeichert in *${md(activeName)}*.`, {
+      inline_keyboard: [[{ text: '📂 Anderes Projekt', callback_data: 'change' }]],
+    });
+    return;
+  }
+
+  // Zero or one project → no decision to make.
+  if (projects.length <= 1) {
+    const only = projects[0];
+    await captureIdea(link.owner_id, msg.text, only?.id ?? null);
+    if (only) await setActiveProject(link.owner_id, only.id);
+    await tgSend(msg.chatId, only ? `💡 Idee gespeichert in *${md(only.name)}*.` : '💡 Idee gespeichert.');
+    return;
+  }
+
+  // Multiple projects, none active → ask which one, holding the idea.
+  await setPendingIdea(link.owner_id, msg.text);
+  await tgSend(msg.chatId, `💡 _"${md(msg.text.slice(0, 80))}"_\n\nZu welchem Projekt?`, projectKeyboard(projects, 'pick'));
+}
+
+// ─── Inline-button callbacks (project routing) ───────────────────────────────
+async function processCallback(cb: any): Promise<void> {
+  const data: string = cb?.data ?? '';
+  const fromId: number | undefined = cb?.from?.id;
+  const chatId: number | undefined = cb?.message?.chat?.id;
+  const messageId: number | undefined = cb?.message?.message_id;
+  if (fromId === undefined || chatId === undefined || messageId === undefined) return;
+
+  const link = await getLink(fromId);
+  if (!link?.linked_at) { await tgAnswerCallback(cb.id, 'Nicht verbunden.'); return; }
+
+  const [action, projectId] = data.split(':');
+  const projects = await getProjects(link.owner_id);
+
+  if (action === 'change') {
+    // Turn the confirmation into a project picker (to re-home the active project).
+    await tgAnswerCallback(cb.id);
+    await tgEditText(chatId, messageId, 'Aktives Projekt wählen:', projectKeyboard(projects, 'setactive'));
+    return;
+  }
+
+  const name = projectName(projects, projectId);
+  if (!name) { await tgAnswerCallback(cb.id, 'Projekt nicht gefunden.'); return; }
+
+  if (action === 'pick') {
+    // Commit the held idea into the chosen project and make it active.
+    if (link.pending_idea) await captureIdea(link.owner_id, link.pending_idea, projectId);
+    await setActiveProject(link.owner_id, projectId);
+    await setPendingIdea(link.owner_id, null);
+    await tgAnswerCallback(cb.id, `Gespeichert in ${name}`);
+    await tgEditText(chatId, messageId, `💡 Gespeichert in *${md(name)}*.\n_Aktives Projekt ist jetzt ${md(name)} — weitere Ideen landen dort._`);
+    return;
+  }
+
+  if (action === 'setactive') {
+    await setActiveProject(link.owner_id, projectId);
+    await tgAnswerCallback(cb.id, `Aktiv: ${name}`);
+    await tgEditText(chatId, messageId, `📂 Aktives Projekt: *${md(name)}*\n_Neue Ideen landen ab jetzt hier._`);
+    return;
+  }
+
+  await tgAnswerCallback(cb.id);
 }
 
 async function handleLinkCode(code: string, tg: { chatId: number; fromId: number; username?: string }): Promise<void> {
@@ -148,11 +278,11 @@ async function handleLinkCode(code: string, tg: { chatId: number; fromId: number
   }).eq('owner_id', pending.owner_id);
 
   if (error) { await tgSend(tg.chatId, 'Verknüpfung fehlgeschlagen — bitte erneut versuchen.'); return; }
-  await tgSend(tg.chatId, '✅ Verbunden! Sende mir jetzt jederzeit eine Idee und ich lege sie in deiner Ideation-Bank ab.');
+  await tgSend(tg.chatId, '✅ Verbunden! Sende mir eine Idee — ich frage dich, in welches Projekt sie gehört. Mit `/projects` wählst du dein aktives Projekt.');
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 2. Connect — the app asks for a link code (or reuses the ecosystem id).
+// Connect — the app asks for a link code (or reuses the ecosystem id).
 // ─────────────────────────────────────────────────────────────────────────────
 telegramRouter.post('/connect', async (req: Request, res: Response) => {
   const user = await authUser(req);
@@ -212,7 +342,7 @@ telegramRouter.post('/disconnect', async (req: Request, res: Response) => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 3. Briefing — a cron pushes the morning briefing to every linked user.
+// Briefing — a cron pushes the morning briefing to every linked user.
 //    Protect with ?secret= or x-cron-secret (Vercel Cron).
 // ─────────────────────────────────────────────────────────────────────────────
 async function runBriefing(res: Response) {
