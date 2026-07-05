@@ -15,6 +15,7 @@ import { DocumentsView } from './views/DocumentsView.js';
 import { AssetsView } from './views/AssetsView.js';
 import { PeopleView } from './views/PeopleView.js';
 import { Sidebar, TopBar, ResourcePlaceholder, SIDEBAR_W, TOPBAR_H, type ResourceView } from './components/Shell.js';
+import { useIsMobile } from './hooks/useIsMobile.js';
 import { useWorkspace } from './context/WorkspaceContext.js';
 import { useAuth } from './context/AuthContext.js';
 import { useGoals } from './hooks/useGoals.js';
@@ -46,6 +47,8 @@ export const App: React.FC<AppProps> = ({ project, onExitProject }) => {
 
   const [activeTab, setActiveTab] = useState<'morning' | 'pipeline' | 'brain'>('morning');
   const [resource, setResource] = useState<ResourceView | null>(null);
+  const isMobile = useIsMobile();
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [activeModal, setActiveModal] = useState<'settings' | null>(null);
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
   const [showMorningBanner, setShowMorningBanner] = useState(true);
@@ -231,6 +234,9 @@ export const App: React.FC<AppProps> = ({ project, onExitProject }) => {
         onExitProject={onExitProject}
         onWorkspace={(t) => { setActiveTab(t); setResource(null); }}
         onResource={(r) => setResource(r)}
+        isMobile={isMobile}
+        open={sidebarOpen}
+        onClose={() => setSidebarOpen(false)}
       />
       {!focusedCardId && (
         <TopBar
@@ -239,12 +245,14 @@ export const App: React.FC<AppProps> = ({ project, onExitProject }) => {
             : activeTab === 'morning' ? 'Today' : activeTab === 'pipeline' ? 'Pipeline' : 'Brain']}
           onHome={onExitProject}
           onSearch={() => { setIsCommandPaletteOpen(true); setSearchQuery(''); }}
+          isMobile={isMobile}
+          onMenu={() => setSidebarOpen(true)}
         />
       )}
 
       {/* ─── MAIN CONTENT (offset by sidebar + top bar) ─── */}
       {!focusedCardId && (
-        <div style={{ paddingLeft: `${SIDEBAR_W}px`, paddingTop: `${TOPBAR_H}px`, minHeight: '100vh', boxSizing: 'border-box' }}>
+        <div style={{ paddingLeft: isMobile ? 0 : `${SIDEBAR_W}px`, paddingTop: `${TOPBAR_H}px`, minHeight: '100vh', boxSizing: 'border-box' }}>
           {resource === 'moodboards' ? (
             <MoodboardsView activeBoardId={selectedMoodboardId} onActiveBoardChange={setSelectedMoodboardId} />
           ) : resource === 'identity' ? (

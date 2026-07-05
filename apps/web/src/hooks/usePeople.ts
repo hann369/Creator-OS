@@ -1,10 +1,9 @@
-import { useState, useEffect, useCallback } from 'react';
-import { supabase } from '../lib/supabase.js';
-import { getActiveWorkspaceId, scopedKey } from '../lib/workspace.js';
+import { useCallback } from 'react';
+import { getActiveWorkspaceId } from '../lib/workspace.js';
+import { createCollection } from '../store/collection.js';
 
 // People as a project-scoped store: collaborators, guests, sponsors and contacts
-// around the creator's work. Supabase + offline localStorage mirror, mirroring
-// useGoals.
+// around the creator's work. Backed by the shared entity collection (Phase B).
 
 export interface Person {
   id: string;
@@ -19,7 +18,6 @@ export interface Person {
   updatedAt: Date;
 }
 
-const PEOPLE_LS = 'pronoia_people';
 const uid = (p: string) => `${p}-${crypto.randomUUID().slice(0, 8)}`;
 
 function rowToPerson(r: any): Person {
@@ -40,29 +38,13 @@ function personToRow(p: Person) {
   };
 }
 
-function loadLocal(): Person[] {
-  try { const raw = localStorage.getItem(scopedKey(PEOPLE_LS)); if (raw) return (JSON.parse(raw) as any[]).map(rowToPerson); } catch { /* ignore */ }
-  return [];
-}
-function persistLocal(items: unknown[]) {
-  try { localStorage.setItem(scopedKey(PEOPLE_LS), JSON.stringify(items)); } catch { /* ignore */ }
-}
+const people = createCollection<Person>({
+  table: 'people', lsKey: 'pronoia_people', idOf: (p) => p.id,
+  fromRow: rowToPerson, toRow: personToRow, stampUpdatedAt: true,
+});
 
 export function usePeople() {
-  const [people, setPeople] = useState<Person[]>(() => loadLocal());
-
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      const ws = getActiveWorkspaceId();
-      try {
-        const r = await supabase.from('people').select('*').eq('workspace_id', ws);
-        if (cancelled) return;
-        if (!r.error && r.data) { setPeople(r.data.map(rowToPerson)); persistLocal(r.data); }
-      } catch { /* offline → keep local */ }
-    })();
-    return () => { cancelled = true; };
-  }, []);
+  const items = people.useItems();
 
   const addPerson = useCallback((input: { name: string; role?: string }): Person => {
     const now = new Date();
@@ -71,25 +53,12 @@ export function usePeople() {
       name: input.name.trim() || 'Unnamed', role: input.role?.trim() ?? '',
       notes: '', tags: [], createdAt: now, updatedAt: now,
     };
-    setPeople(prev => { const next = [p, ...prev]; persistLocal(next.map(personToRow)); return next; });
-    supabase.from('people').upsert(personToRow(p), { onConflict: 'id' }).then(() => {}, () => {});
+    people.add(p);
     return p;
   }, []);
 
-  const updatePerson = useCallback((id: string, patch: Partial<Person>) => {
-    setPeople(prev => {
-      const next = prev.map(p => p.id === id ? { ...p, ...patch, updatedAt: new Date() } : p);
-      persistLocal(next.map(personToRow));
-      const updated = next.find(p => p.id === id);
-      if (updated) supabase.from('people').upsert(personToRow(updated), { onConflict: 'id' }).then(() => {}, () => {});
-      return next;
-    });
-  }, []);
+  const updatePerson = useCallback((id: string, patch: Partial<Person>) => people.update(id, patch), []);
+  const deletePerson = useCallback((id: string) => people.remove(id), []);
 
-  const deletePerson = useCallback((id: string) => {
-    setPeople(prev => { const next = prev.filter(p => p.id !== id); persistLocal(next.map(personToRow)); return next; });
-    supabase.from('people').delete().eq('id', id).then(() => {}, () => {});
-  }, []);
-
-  return { people, addPerson, updatePerson, deletePerson };
+  return { people: items, addPerson, updatePerson, deletePerson };
 }

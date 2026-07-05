@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { FileText, Plus, Trash2, Link as LinkIcon } from 'lucide-react';
 import { useDocuments, type Doc } from '../hooks/useDocuments.js';
 import { useWorkspace } from '../context/WorkspaceContext.js';
+import { useIsMobile } from '../hooks/useIsMobile.js';
 
 const inputStyle: React.CSSProperties = { fontSize: '13px', border: '1px solid var(--border-color)', padding: '9px 12px', borderRadius: '8px', outline: 'none', background: 'transparent', width: '100%', boxSizing: 'border-box' };
 const iconBtn: React.CSSProperties = { display: 'flex', alignItems: 'center', justifyContent: 'center', width: '28px', height: '28px', border: '1px solid var(--border-color)', borderRadius: '7px', background: 'transparent', color: 'var(--text-secondary)', cursor: 'pointer' };
@@ -12,6 +13,7 @@ const snippet = (body: string) => body.replace(/[#*`_>-]/g, '').trim().slice(0, 
 export const DocumentsView: React.FC = () => {
   const { documents, addDocument, updateDocument, deleteDocument } = useDocuments();
   const { pipelineCards } = useWorkspace();
+  const isMobile = useIsMobile();
   const [title, setTitle] = useState('');
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
@@ -53,7 +55,7 @@ export const DocumentsView: React.FC = () => {
           Noch kein Dokument. Leg dein erstes Skript oder Briefing an.
         </div>
       ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: '300px 1fr', gap: '20px', alignItems: 'start' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '300px 1fr', gap: '20px', alignItems: 'start' }}>
           {/* List */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
             {documents.map(d => (

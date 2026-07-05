@@ -1,10 +1,10 @@
-import { useState, useEffect, useCallback } from 'react';
-import { supabase } from '../lib/supabase.js';
-import { getActiveWorkspaceId, scopedKey } from '../lib/workspace.js';
+import { useCallback } from 'react';
+import { getActiveWorkspaceId } from '../lib/workspace.js';
+import { createCollection } from '../store/collection.js';
 
 // Documents as a first-class, project-scoped store (the `document` face of the
-// entity spine). Long-form notes/scripts that can optionally be linked to a
-// pipeline card. Supabase + offline localStorage mirror, mirroring useGoals.
+// entity spine). Backed by the shared entity collection (Roadmap Phase B) — one
+// store shared by every caller.
 
 export interface Doc {
   id: string;
@@ -17,7 +17,6 @@ export interface Doc {
   updatedAt: Date;
 }
 
-const DOCS_LS = 'pronoia_documents';
 const uid = (p: string) => `${p}-${crypto.randomUUID().slice(0, 8)}`;
 
 function rowToDoc(r: any): Doc {
@@ -37,52 +36,23 @@ function docToRow(d: Doc) {
   };
 }
 
-function loadLocal(): Doc[] {
-  try { const raw = localStorage.getItem(scopedKey(DOCS_LS)); if (raw) return (JSON.parse(raw) as any[]).map(rowToDoc); } catch { /* ignore */ }
-  return [];
-}
-function persistLocal(items: unknown[]) {
-  try { localStorage.setItem(scopedKey(DOCS_LS), JSON.stringify(items)); } catch { /* ignore */ }
-}
+const documents = createCollection<Doc>({
+  table: 'documents', lsKey: 'pronoia_documents', idOf: (d) => d.id,
+  fromRow: rowToDoc, toRow: docToRow, stampUpdatedAt: true,
+});
 
 export function useDocuments() {
-  const [documents, setDocuments] = useState<Doc[]>(() => loadLocal());
-
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      const ws = getActiveWorkspaceId();
-      try {
-        const r = await supabase.from('documents').select('*').eq('workspace_id', ws);
-        if (cancelled) return;
-        if (!r.error && r.data) { setDocuments(r.data.map(rowToDoc)); persistLocal(r.data); }
-      } catch { /* offline → keep local */ }
-    })();
-    return () => { cancelled = true; };
-  }, []);
+  const items = documents.useItems();
 
   const addDocument = useCallback((title: string): Doc => {
     const now = new Date();
     const d: Doc = { id: uid('doc'), workspaceId: getActiveWorkspaceId(), title: title.trim() || 'Untitled', body: '', tags: [], createdAt: now, updatedAt: now };
-    setDocuments(prev => { const next = [d, ...prev]; persistLocal(next.map(docToRow)); return next; });
-    supabase.from('documents').upsert(docToRow(d), { onConflict: 'id' }).then(() => {}, () => {});
+    documents.add(d);
     return d;
   }, []);
 
-  const updateDocument = useCallback((id: string, patch: Partial<Doc>) => {
-    setDocuments(prev => {
-      const next = prev.map(d => d.id === id ? { ...d, ...patch, updatedAt: new Date() } : d);
-      persistLocal(next.map(docToRow));
-      const updated = next.find(d => d.id === id);
-      if (updated) supabase.from('documents').upsert(docToRow(updated), { onConflict: 'id' }).then(() => {}, () => {});
-      return next;
-    });
-  }, []);
+  const updateDocument = useCallback((id: string, patch: Partial<Doc>) => documents.update(id, patch), []);
+  const deleteDocument = useCallback((id: string) => documents.remove(id), []);
 
-  const deleteDocument = useCallback((id: string) => {
-    setDocuments(prev => { const next = prev.filter(d => d.id !== id); persistLocal(next.map(docToRow)); return next; });
-    supabase.from('documents').delete().eq('id', id).then(() => {}, () => {});
-  }, []);
-
-  return { documents, addDocument, updateDocument, deleteDocument };
+  return { documents: items, addDocument, updateDocument, deleteDocument };
 }

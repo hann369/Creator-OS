@@ -1,10 +1,10 @@
-import { useState, useEffect, useCallback } from 'react';
-import { supabase } from '../lib/supabase.js';
-import { getActiveWorkspaceId, scopedKey } from '../lib/workspace.js';
+import { useCallback } from 'react';
+import { getActiveWorkspaceId } from '../lib/workspace.js';
+import { createCollection } from '../store/collection.js';
 
 // Assets as a first-class, project-scoped store (the `asset` face of the entity
 // spine): images/videos/audio/pdfs referenced by URL, optionally linked to a
-// pipeline card. Supabase + offline localStorage mirror, mirroring useGoals.
+// pipeline card. Backed by the shared entity collection (Roadmap Phase B).
 
 export const ASSET_KINDS = ['image', 'video', 'audio', 'pdf', 'other'] as const;
 export type AssetKind = typeof ASSET_KINDS[number];
@@ -21,7 +21,6 @@ export interface AssetItem {
   updatedAt: Date;
 }
 
-const ASSETS_LS = 'pronoia_assets';
 const uid = (p: string) => `${p}-${crypto.randomUUID().slice(0, 8)}`;
 
 function rowToAsset(r: any): AssetItem {
@@ -42,14 +41,6 @@ function assetToRow(a: AssetItem) {
   };
 }
 
-function loadLocal(): AssetItem[] {
-  try { const raw = localStorage.getItem(scopedKey(ASSETS_LS)); if (raw) return (JSON.parse(raw) as any[]).map(rowToAsset); } catch { /* ignore */ }
-  return [];
-}
-function persistLocal(items: unknown[]) {
-  try { localStorage.setItem(scopedKey(ASSETS_LS), JSON.stringify(items)); } catch { /* ignore */ }
-}
-
 /** Best-effort asset kind from a URL extension. */
 export function guessKind(url: string): AssetKind {
   const u = url.toLowerCase().split('?')[0];
@@ -60,21 +51,13 @@ export function guessKind(url: string): AssetKind {
   return 'other';
 }
 
-export function useAssets() {
-  const [assets, setAssets] = useState<AssetItem[]>(() => loadLocal());
+const assets = createCollection<AssetItem>({
+  table: 'assets', lsKey: 'pronoia_assets', idOf: (a) => a.id,
+  fromRow: rowToAsset, toRow: assetToRow, stampUpdatedAt: true,
+});
 
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      const ws = getActiveWorkspaceId();
-      try {
-        const r = await supabase.from('assets').select('*').eq('workspace_id', ws);
-        if (cancelled) return;
-        if (!r.error && r.data) { setAssets(r.data.map(rowToAsset)); persistLocal(r.data); }
-      } catch { /* offline → keep local */ }
-    })();
-    return () => { cancelled = true; };
-  }, []);
+export function useAssets() {
+  const items = assets.useItems();
 
   const addAsset = useCallback((input: { title: string; url: string; kind?: AssetKind }): AssetItem => {
     const now = new Date();
@@ -83,25 +66,12 @@ export function useAssets() {
       title: input.title.trim() || 'Untitled', url: input.url.trim(),
       kind: input.kind ?? guessKind(input.url), tags: [], createdAt: now, updatedAt: now,
     };
-    setAssets(prev => { const next = [a, ...prev]; persistLocal(next.map(assetToRow)); return next; });
-    supabase.from('assets').upsert(assetToRow(a), { onConflict: 'id' }).then(() => {}, () => {});
+    assets.add(a);
     return a;
   }, []);
 
-  const updateAsset = useCallback((id: string, patch: Partial<AssetItem>) => {
-    setAssets(prev => {
-      const next = prev.map(a => a.id === id ? { ...a, ...patch, updatedAt: new Date() } : a);
-      persistLocal(next.map(assetToRow));
-      const updated = next.find(a => a.id === id);
-      if (updated) supabase.from('assets').upsert(assetToRow(updated), { onConflict: 'id' }).then(() => {}, () => {});
-      return next;
-    });
-  }, []);
+  const updateAsset = useCallback((id: string, patch: Partial<AssetItem>) => assets.update(id, patch), []);
+  const deleteAsset = useCallback((id: string) => assets.remove(id), []);
 
-  const deleteAsset = useCallback((id: string) => {
-    setAssets(prev => { const next = prev.filter(a => a.id !== id); persistLocal(next.map(assetToRow)); return next; });
-    supabase.from('assets').delete().eq('id', id).then(() => {}, () => {});
-  }, []);
-
-  return { assets, addAsset, updateAsset, deleteAsset };
+  return { assets: items, addAsset, updateAsset, deleteAsset };
 }

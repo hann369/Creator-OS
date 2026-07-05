@@ -1,11 +1,11 @@
-import { useState, useEffect, useCallback } from 'react';
-import { supabase } from '../lib/supabase.js';
-import { getActiveWorkspaceId, scopedKey } from '../lib/workspace.js';
+import { useCallback } from 'react';
+import { getActiveWorkspaceId } from '../lib/workspace.js';
+import { createCollection } from '../store/collection.js';
 
 // Goals as a first-class, project-scoped store (mirrors GoalEntity in
-// packages/domain). The executive engine reasons against a primary goal; this
-// lets the creator actually set/track those targets instead of a hardcoded
-// "Reach 100k Subscribers" string. Supabase + offline localStorage mirror.
+// packages/domain). Backed by the shared entity collection (Roadmap Phase B), so
+// every caller — GoalsView and the sidebar ProjectProgress — reads ONE store and
+// stays in sync instead of holding independent useState copies.
 
 export const GOAL_STATUSES = ['active', 'achieved', 'archived'] as const;
 export type GoalStatus = typeof GOAL_STATUSES[number];
@@ -22,7 +22,6 @@ export interface Goal {
   updatedAt: Date;
 }
 
-const GOALS_LS = 'pronoia_goals';
 const uid = (p: string) => `${p}-${crypto.randomUUID().slice(0, 8)}`;
 
 function rowToGoal(r: any): Goal {
@@ -45,52 +44,23 @@ function goalToRow(g: Goal) {
   };
 }
 
-function loadLocal(): Goal[] {
-  try { const raw = localStorage.getItem(scopedKey(GOALS_LS)); if (raw) return (JSON.parse(raw) as any[]).map(rowToGoal); } catch { /* ignore */ }
-  return [];
-}
-function persistLocal(items: unknown[]) {
-  try { localStorage.setItem(scopedKey(GOALS_LS), JSON.stringify(items)); } catch { /* ignore */ }
-}
+const goals = createCollection<Goal>({
+  table: 'goals', lsKey: 'pronoia_goals', idOf: (g) => g.id,
+  fromRow: rowToGoal, toRow: goalToRow, stampUpdatedAt: true,
+});
 
 export function useGoals() {
-  const [goals, setGoals] = useState<Goal[]>(() => loadLocal());
-
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      const ws = getActiveWorkspaceId();
-      try {
-        const g = await supabase.from('goals').select('*').eq('workspace_id', ws);
-        if (cancelled) return;
-        if (!g.error && g.data) { setGoals(g.data.map(rowToGoal)); persistLocal(g.data); }
-      } catch { /* offline → keep local */ }
-    })();
-    return () => { cancelled = true; };
-  }, []);
+  const items = goals.useItems();
 
   const addGoal = useCallback((title: string, description = ''): Goal => {
     const now = new Date();
     const g: Goal = { id: uid('goal'), workspaceId: getActiveWorkspaceId(), title: title.trim() || 'New goal', description, progress: 0, status: 'active', createdAt: now, updatedAt: now };
-    setGoals(prev => { const next = [...prev, g]; persistLocal(next.map(goalToRow)); return next; });
-    supabase.from('goals').upsert(goalToRow(g), { onConflict: 'id' }).then(() => {}, () => {});
+    goals.add(g);
     return g;
   }, []);
 
-  const updateGoal = useCallback((id: string, patch: Partial<Goal>) => {
-    setGoals(prev => {
-      const next = prev.map(g => g.id === id ? { ...g, ...patch, updatedAt: new Date() } : g);
-      persistLocal(next.map(goalToRow));
-      const updated = next.find(g => g.id === id);
-      if (updated) supabase.from('goals').upsert(goalToRow(updated), { onConflict: 'id' }).then(() => {}, () => {});
-      return next;
-    });
-  }, []);
+  const updateGoal = useCallback((id: string, patch: Partial<Goal>) => goals.update(id, patch), []);
+  const deleteGoal = useCallback((id: string) => goals.remove(id), []);
 
-  const deleteGoal = useCallback((id: string) => {
-    setGoals(prev => { const next = prev.filter(g => g.id !== id); persistLocal(next.map(goalToRow)); return next; });
-    supabase.from('goals').delete().eq('id', id).then(() => {}, () => {});
-  }, []);
-
-  return { goals, addGoal, updateGoal, deleteGoal };
+  return { goals: items, addGoal, updateGoal, deleteGoal };
 }
