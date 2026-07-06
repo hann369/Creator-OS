@@ -42,13 +42,11 @@ export const AuthScreen: React.FC = () => {
   };
 
   return (
-    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px' }}>
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '12px' }}>
       <div style={{ width: '100%', maxWidth: '380px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '9px', marginBottom: '28px' }}>
-          <span style={{ width: '15px', height: '15px', background: 'var(--accent-color)', transform: 'rotate(45deg)', borderRadius: '2px', display: 'inline-block' }} />
-          <span style={{ fontSize: '14px', fontWeight: 700, letterSpacing: '0.08em', color: 'var(--text-primary)' }}>PRONOIA</span>
+          <img src="/logo.png" alt="Pronoia" style={{ height: '24px', mixBlendMode: 'multiply', objectFit: 'contain' }} />
         </div>
-
         <h1 className="title-serif" style={{ fontSize: '32px', color: 'var(--text-primary)', margin: '0 0 6px' }}>
           {mode === 'signin' ? 'Welcome back.' : 'Create your space.'}
         </h1>

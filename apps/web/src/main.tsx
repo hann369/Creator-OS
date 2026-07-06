@@ -4,11 +4,11 @@ import './index.css'
 import App from './App.tsx'
 import { WorkspaceProvider } from './context/WorkspaceContext.tsx'
 import { AuthProvider, useAuth } from './context/AuthContext.tsx'
-import { AuthScreen } from './components/AuthScreen.tsx'
 import { ProjectsScreen } from './components/ProjectsScreen.tsx'
 import { useProjects, type ProjectItem } from './hooks/useProjects.ts'
 import { setActiveWorkspaceId } from './lib/workspace.ts'
 import { CourseViewer } from './views/CourseViewer.tsx'
+import { LandingPage } from './views/LandingPage.tsx'
 
 // Gateway: show the projects screen first; entering a project mounts the
 // workspace. Each project is its OWN data scope — the active project's id becomes
@@ -33,11 +33,20 @@ function Workspace() {
   )
 }
 
-// Auth gate: nothing renders until we know the session state; no session → login.
+// Auth gate: nothing renders until we know the session state; no session → landing page.
 function Root() {
   const { session, loading } = useAuth()
+  const [showAuth, setShowAuth] = useState(false)
   if (loading) return null
-  if (!session) return <AuthScreen />
+  if (!session) {
+    return (
+      <LandingPage 
+        onLogin={() => setShowAuth(true)} 
+        showAuth={showAuth} 
+        onCloseAuth={() => setShowAuth(false)} 
+      />
+    )
+  }
   return <Workspace />
 }
 

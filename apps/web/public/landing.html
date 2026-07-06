@@ -1,0 +1,619 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth font-sans">
+<head>
+    <meta charset="utf-8">
+    <meta content="width=device-width, initial-scale=1.0" name="viewport">
+    <title>Creator OS by Pronoia — A Cognitive Operating System</title>
+    
+    <!-- Tailwind CSS with form and container queries plugins -->
+    <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+    
+    <!-- Geist Font for Swiss Typography & Material Symbols for Icons -->
+    <link href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet">
+    
+    <script id="tailwind-config">
+        tailwind.config = {
+          theme: {
+            extend: {
+              colors: {
+                "swiss-bg": "#FAFAF8",
+                "swiss-card": "#FFFFFF",
+                "swiss-text": "#111111",
+                "swiss-secondary": "#6B7280",
+                "swiss-accent": "#1F7A53",
+                "swiss-border": "#ECECEC"
+              },
+              fontFamily: {
+                sans: ["Geist", "sans-serif"]
+              },
+              boxShadow: {
+                "swiss-premium": "0 8px 30px rgba(0, 0, 0, 0.04)"
+              }
+            }
+          }
+        }
+    </script>
+    
+    <style>
+        body { 
+            background-color: #FAFAF8; 
+            color: #111111; 
+            font-family: 'Geist', sans-serif;
+            letter-spacing: -0.015em;
+        }
+
+        /* Swiss Headline style: tight, bold, clean */
+        .swiss-headline {
+            letter-spacing: -0.03em;
+            line-height: 1.1;
+            font-weight: 700;
+        }
+
+        /* Apple-style precise transitions */
+        .spring-transition {
+            transition: all 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        /* Infinite connection pulse animation */
+        @keyframes pulse-connection {
+            0% { stroke-dashoffset: 24; }
+            100% { stroke-dashoffset: 0; }
+        }
+        .animate-connection {
+            stroke-dasharray: 6 6;
+            animation: pulse-connection 2s linear infinite;
+        }
+
+        /* Scrollbar hides */
+        .no-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+        .no-scrollbar {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+    </style>
+</head>
+<body class="antialiased min-h-screen flex flex-col overflow-x-hidden selection:bg-swiss-accent selection:text-white">
+
+    <!-- NAVIGATION -->
+    <nav class="fixed top-0 w-full z-50 bg-[#FAFAF8]/80 backdrop-blur-md border-b border-swiss-border">
+        <div class="max-w-[1200px] mx-auto px-6 sm:px-10 flex justify-between items-center h-[64px]">
+            <div class="flex items-center gap-10">
+                <a class="flex items-center gap-2.5 text-base font-bold tracking-tight text-swiss-text animate-fade-in" href="#">
+                    <img src="./logo-mark.png" alt="Creator OS" class="w-5 h-5 object-contain rounded" onerror="this.style.display='none'">
+                    <span class="font-bold tracking-tight">Creator OS</span>
+                    <span class="text-[9px] font-medium tracking-[0.1em] text-neutral-400 uppercase -ml-1">by Pronoia</span>
+                </a>
+                <div class="hidden md:flex items-center gap-6 text-[13px] font-medium text-swiss-secondary">
+                    <a href="#features" class="hover:text-swiss-text transition-colors">Features</a>
+                    <a href="#workspace" class="hover:text-swiss-text transition-colors">Workspace</a>
+                    <a href="#ai-philosophy" class="hover:text-swiss-text transition-colors">Vision</a>
+                </div>
+            </div>
+            <div class="flex items-center gap-4 text-[13px] font-medium">
+                <a class="hover:text-swiss-text text-swiss-secondary transition-colors" href="https://github.com">GitHub</a>
+                <a class="bg-swiss-text text-[#FAFAF8] px-4 py-2 rounded-lg font-semibold hover:bg-neutral-800 transition-all shadow-sm" href="#">
+                    Join Beta
+                </a>
+            </div>
+        </div>
+    </nav>
+
+    <!-- MAIN CONTAINER -->
+    <main class="flex-grow pt-[130px] pb-24">
+
+        <!-- HERO SECTION -->
+        <section class="max-w-[1200px] mx-auto px-6 sm:px-10 mb-24 text-center">
+            
+            <!-- Tiny Notification Pill -->
+            <div class="inline-flex items-center gap-2 bg-swiss-card border border-swiss-border px-3 py-1 rounded-full shadow-sm mb-6">
+                <span class="w-1.5 h-1.5 rounded-full bg-swiss-accent animate-pulse"></span>
+                <span class="text-[10px] font-bold uppercase tracking-wider text-swiss-secondary">Private Beta</span>
+                <span class="text-[9px] text-neutral-300 font-bold">|</span>
+                <span class="text-[10px] text-swiss-accent font-semibold">Cognitive operating system</span>
+            </div>
+            
+            <h1 class="swiss-headline text-5xl sm:text-7xl lg:text-[80px] max-w-4xl mx-auto mb-6 text-swiss-text">
+                Turn your knowledge into an operating system.
+            </h1>
+            
+            <p class="text-base sm:text-lg text-swiss-secondary max-w-2xl mx-auto leading-relaxed mb-8">
+                Creator OS connects notes, research, videos and ideas into one evolving, distraction-free cognitive workspace.
+            </p>
+            
+            <div class="flex justify-center items-center gap-4 mb-20">
+                <a class="bg-swiss-accent text-[#FAFAF8] px-6 py-3 rounded-lg font-semibold hover:bg-emerald-800 transition-all shadow-sm text-sm" href="#">
+                    Request Access
+                </a>
+                <a class="bg-swiss-card border border-swiss-border text-swiss-text px-6 py-3 rounded-lg font-semibold hover:bg-neutral-50 transition-all text-sm" href="#">
+                    Watch Demo
+                </a>
+            </div>
+
+            <!-- HUGE PRODUCT PREVIEW (70% viewport dominant mockup) -->
+            <div class="w-full max-w-[1000px] mx-auto bg-swiss-card border border-swiss-border rounded-xl shadow-swiss-premium overflow-hidden flex flex-col h-[520px]">
+                
+                <!-- OS Window bar -->
+                <div class="bg-neutral-50 border-b border-swiss-border px-4 py-3 flex items-center justify-between">
+                    <div class="flex items-center gap-1.5">
+                        <span class="w-2.5 h-2.5 rounded-full bg-neutral-200"></span>
+                        <span class="w-2.5 h-2.5 rounded-full bg-neutral-200"></span>
+                        <span class="w-2.5 h-2.5 rounded-full bg-neutral-200"></span>
+                    </div>
+                    <div class="bg-swiss-card border border-swiss-border px-4 py-1.5 rounded-lg flex items-center gap-2 shadow-sm text-[11px] text-swiss-secondary font-medium">
+                        <span class="material-symbols-outlined text-[14px]">search</span>
+                        <span class="w-48 text-left">Search cognitive network...</span>
+                        <span class="font-mono text-[9px] text-neutral-400 bg-neutral-100 px-1 rounded">⌘K</span>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <span class="w-2 h-2 rounded-full bg-swiss-accent"></span>
+                        <span class="text-[10px] font-semibold text-swiss-secondary uppercase tracking-wider">Sync: Active</span>
+                    </div>
+                </div>
+
+                <!-- Main Application Layout -->
+                <div class="flex-grow flex overflow-hidden">
+                    
+                    <!-- App Sidebar -->
+                    <aside class="w-[200px] border-r border-swiss-border bg-neutral-50 p-4 flex flex-col justify-between text-left shrink-0">
+                        <div class="space-y-6">
+                            <div>
+                                <span class="text-[9px] font-bold text-neutral-400 uppercase tracking-widest block mb-2">Workspace</span>
+                                <nav class="space-y-1">
+                                    <button onclick="previewWorkspace('today')" id="w-btn-today" class="w-full flex items-center gap-2.5 px-2.5 py-2 text-xs font-semibold rounded-lg bg-white border border-swiss-border text-swiss-text text-left spring-transition">
+                                        <span class="material-symbols-outlined text-[16px] text-swiss-accent">today</span>
+                                        Today
+                                    </button>
+                                    <button onclick="previewWorkspace('pipeline')" id="w-btn-pipeline" class="w-full flex items-center gap-2.5 px-2.5 py-2 text-xs font-semibold rounded-lg text-swiss-secondary hover:bg-neutral-100 text-left spring-transition">
+                                        <span class="material-symbols-outlined text-[16px]">view_kanban</span>
+                                        Pipeline
+                                    </button>
+                                    <button onclick="previewWorkspace('brain')" id="w-btn-brain" class="w-full flex items-center gap-2.5 px-2.5 py-2 text-xs font-semibold rounded-lg text-swiss-secondary hover:bg-neutral-100 text-left spring-transition">
+                                        <span class="material-symbols-outlined text-[16px]">hub</span>
+                                        Brain
+                                    </button>
+                                    <button onclick="previewWorkspace('moodboards')" id="w-btn-moodboards" class="w-full flex items-center gap-2.5 px-2.5 py-2 text-xs font-semibold rounded-lg text-swiss-secondary hover:bg-neutral-100 text-left spring-transition">
+                                        <span class="material-symbols-outlined text-[16px]">collections</span>
+                                        Moodboards
+                                    </button>
+                                    <button onclick="previewWorkspace('editor')" id="w-btn-editor" class="w-full flex items-center gap-2.5 px-2.5 py-2 text-xs font-semibold rounded-lg text-swiss-secondary hover:bg-neutral-100 text-left spring-transition">
+                                        <span class="material-symbols-outlined text-[16px]">edit_document</span>
+                                        Editor
+                                    </button>
+                                </nav>
+                            </div>
+                        </div>
+                        
+                        <div class="border-t border-swiss-border pt-4 flex items-center gap-2.5">
+                            <div class="w-6 h-6 rounded bg-swiss-accent flex items-center justify-center text-[10px] font-bold text-white uppercase font-mono">C</div>
+                            <div>
+                                <div class="text-[10px] font-bold text-swiss-text leading-none">Creator OS</div>
+                                <div class="text-[8px] text-swiss-secondary mt-0.5">by Pronoia</div>
+                            </div>
+                        </div>
+                    </aside>
+
+                    <!-- App Content Area -->
+                    <main class="flex-grow bg-white p-6 md:p-8 text-left overflow-y-auto no-scrollbar relative">
+                        
+                        <!-- VIEW 1: TODAY WORKSPACE -->
+                        <div id="w-view-today" class="space-y-6 spring-transition">
+                            <div class="flex items-center justify-between border-b border-swiss-border pb-3">
+                                <div>
+                                    <h3 class="text-lg font-bold text-swiss-text">Executive Priority Stack</h3>
+                                    <p class="text-[11px] text-swiss-secondary mt-0.5">Running Multi-Objective Optimization Engine</p>
+                                </div>
+                                <span class="bg-emerald-50 text-swiss-accent px-2.5 py-1 rounded text-[10px] font-bold uppercase tracking-wider border border-emerald-100">Deep Work Active</span>
+                            </div>
+                            
+                            <!-- Headline -->
+                            <div class="bg-neutral-50 border border-swiss-border p-6 rounded-xl space-y-3">
+                                <span class="text-[10px] uppercase font-bold text-swiss-secondary tracking-wider">Today's Executive Recommendation</span>
+                                <h4 class="text-xl font-bold text-swiss-text">"Define brand style DNA language"</h4>
+                                <div class="flex gap-4 text-[10px] font-mono text-swiss-secondary">
+                                    <span>✦ Priority: 8.5/10</span>
+                                    <span>✦ Context: Available (90 mins)</span>
+                                    <span>✦ Focus: High ROI Target</span>
+                                </div>
+                            </div>
+                            
+                            <!-- Today discovered signals -->
+                            <div>
+                                <span class="text-[10px] uppercase font-bold text-neutral-400 tracking-wider block mb-3">HEUTE ENTDECKT</span>
+                                <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                                    <div class="border border-swiss-border p-3 rounded-lg bg-neutral-50/50">
+                                        <div class="text-base font-bold">2</div>
+                                        <div class="text-[9px] text-swiss-secondary uppercase tracking-wider mt-0.5">Matured Concepts</div>
+                                    </div>
+                                    <div class="border border-swiss-border p-3 rounded-lg bg-neutral-50/50">
+                                        <div class="text-base font-bold">5</div>
+                                        <div class="text-[9px] text-swiss-secondary uppercase tracking-wider mt-0.5">New Thoughts</div>
+                                    </div>
+                                    <div class="border border-swiss-border p-3 rounded-lg bg-neutral-50/50">
+                                        <div class="text-base font-bold">0</div>
+                                        <div class="text-[9px] text-swiss-secondary uppercase tracking-wider mt-0.5">Contradictions</div>
+                                    </div>
+                                    <div class="border border-swiss-border p-3 rounded-lg bg-neutral-50/50">
+                                        <div class="text-base font-bold">3</div>
+                                        <div class="text-[9px] text-swiss-secondary uppercase tracking-wider mt-0.5">Open Gaps</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- VIEW 2: PIPELINE WORKSPACE (Hidden by default) -->
+                        <div id="w-view-pipeline" class="hidden space-y-6 spring-transition">
+                            <div class="flex items-center justify-between border-b border-swiss-border pb-3">
+                                <div>
+                                    <h3 class="text-lg font-bold text-swiss-text">Content Pipeline</h3>
+                                    <p class="text-[11px] text-swiss-secondary mt-0.5">Organize writing from strategy draft to publish</p>
+                                </div>
+                            </div>
+                            <div class="grid grid-cols-3 gap-3">
+                                <div class="space-y-2">
+                                    <span class="text-[9px] uppercase font-bold text-neutral-400 tracking-wider">Queue</span>
+                                    <div class="border border-swiss-border bg-neutral-50 p-3 rounded-lg text-xs font-semibold text-swiss-text">Design audit list</div>
+                                    <div class="border border-swiss-border bg-neutral-50 p-3 rounded-lg text-xs font-semibold text-swiss-text">Concept ideation draft</div>
+                                </div>
+                                <div class="space-y-2">
+                                    <span class="text-[9px] uppercase font-bold text-neutral-400 tracking-wider">Drafting</span>
+                                    <div class="border border-swiss-border bg-neutral-50 p-3 rounded-lg text-xs font-semibold text-swiss-text">Brand guidelines layout</div>
+                                </div>
+                                <div class="space-y-2">
+                                    <span class="text-[9px] uppercase font-bold text-neutral-400 tracking-wider">Done / Published</span>
+                                    <div class="border border-swiss-border bg-neutral-50 p-3 rounded-lg text-xs font-semibold text-neutral-400 line-through">Cognitive Wireframes v1</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- VIEW 3: BRAIN WORKSPACE (Hidden by default) -->
+                        <div id="w-view-brain" class="hidden space-y-6 spring-transition">
+                            <div class="flex items-center justify-between border-b border-swiss-border pb-3">
+                                <div>
+                                    <h3 class="text-lg font-bold text-swiss-text">Brain Index Graph</h3>
+                                    <p class="text-[11px] text-swiss-secondary mt-0.5">Semantic memory map generated by KnowledgeEvaluator</p>
+                                </div>
+                            </div>
+                            <div class="border border-swiss-border rounded-xl p-4 h-[260px] flex items-center justify-center bg-neutral-50/50">
+                                <svg class="w-full h-full text-neutral-300" viewBox="0 0 600 200">
+                                    <line x1="100" y1="100" x2="250" y2="60" stroke="#ECECEC" stroke-width="1.5"/>
+                                    <line x1="250" y1="60" x2="400" y2="120" stroke="#ECECEC" stroke-width="1.5"/>
+                                    <line x1="400" y1="120" x2="500" y2="50" stroke="#ECECEC" stroke-width="1.5"/>
+                                    <line x1="250" y1="60" x2="350" y2="160" stroke="#ECECEC" stroke-width="1.5"/>
+                                    
+                                    <circle cx="100" cy="100" r="5" fill="#1F7A53"/>
+                                    <text x="100" y="118" text-anchor="middle" fill="#111" font-size="9" font-weight="bold">Core Draft</text>
+
+                                    <circle cx="250" cy="60" r="5" fill="#111"/>
+                                    <text x="250" y="45" text-anchor="middle" fill="#111" font-size="9" font-weight="bold">Ideas Index</text>
+
+                                    <circle cx="400" cy="120" r="5" fill="#1F7A53"/>
+                                    <text x="400" y="138" text-anchor="middle" fill="#111" font-size="9" font-weight="bold">Strategy.pdf</text>
+
+                                    <circle cx="500" cy="50" r="5" fill="#6B7280"/>
+                                    <text x="500" y="35" text-anchor="middle" fill="#6B7280" font-size="9">Moodboard</text>
+
+                                    <circle cx="350" cy="160" r="5" fill="#6B7280"/>
+                                    <text x="350" y="178" text-anchor="middle" fill="#6B7280" font-size="9">Reference</text>
+                                </svg>
+                            </div>
+                        </div>
+
+                        <!-- VIEW 4: MOODBOARDS WORKSPACE (Hidden by default) -->
+                        <div id="w-view-moodboards" class="hidden space-y-6 spring-transition">
+                            <div class="flex items-center justify-between border-b border-swiss-border pb-3">
+                                <div>
+                                    <h3 class="text-lg font-bold text-swiss-text">Moodboards</h3>
+                                    <p class="text-[11px] text-swiss-secondary mt-0.5">Capturing raw references and links</p>
+                                </div>
+                            </div>
+                            <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                                <div class="bg-neutral-100 border border-swiss-border aspect-square rounded-lg flex items-center justify-center">
+                                    <span class="text-[9px] uppercase font-bold text-neutral-400 tracking-wider">Asset_Grid.png</span>
+                                </div>
+                                <div class="bg-neutral-100 border border-swiss-border aspect-square rounded-lg flex items-center justify-center">
+                                    <span class="text-[9px] uppercase font-bold text-neutral-400 tracking-wider">Strategy_Book.pdf</span>
+                                </div>
+                                <div class="bg-swiss-card border border-swiss-border p-3 rounded-lg flex flex-col justify-between">
+                                    <span class="text-[8px] uppercase tracking-wider text-swiss-secondary font-semibold">Tweet</span>
+                                    <p class="text-[9px] text-neutral-700 italic">"Design around cognitive load."</p>
+                                </div>
+                                <div class="bg-neutral-100 border border-swiss-border aspect-square rounded-lg flex items-center justify-center">
+                                    <span class="text-[9px] uppercase font-bold text-neutral-400 tracking-wider">Reference_Shot.jpg</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- VIEW 5: EDITOR WORKSPACE (Hidden by default) -->
+                        <div id="w-view-editor" class="hidden space-y-6 spring-transition">
+                            <div class="flex items-center justify-between border-b border-swiss-border pb-3">
+                                <div>
+                                    <h3 class="text-lg font-bold text-swiss-text">Focused Content Editor</h3>
+                                    <p class="text-[11px] text-swiss-secondary mt-0.5">Zero-distraction workspace for production</p>
+                                </div>
+                            </div>
+                            <div class="space-y-4 max-w-lg mx-auto py-4">
+                                <h4 class="text-xl font-bold text-neutral-800">Writing in Creator OS</h4>
+                                <p class="text-xs text-neutral-600 leading-relaxed">
+                                    Creator OS actively indexes your library concepts in the background. Relevant strategies and bookmark guidelines show up along the screen margin as you write, without interrupting your text input.
+                                </p>
+                            </div>
+                        </div>
+
+                    </main>
+
+                </div>
+            </div>
+
+        </section>
+
+        <!-- EVERYTHING CONNECTED ANIMATION SECTION -->
+        <section class="max-w-[1200px] mx-auto px-6 sm:px-10 mb-32 border-t border-swiss-border pt-24">
+            <div class="text-center max-w-2xl mx-auto mb-16">
+                <h2 class="swiss-headline text-4xl sm:text-5xl text-swiss-text mb-4">
+                    Everything connected.
+                </h2>
+                <p class="text-sm text-swiss-secondary max-w-md mx-auto leading-relaxed">
+                    Watch documents and concepts align instantly from raw notes to published outputs.
+                </p>
+            </div>
+
+            <!-- Connected Flow Diagram with SVG connections -->
+            <div class="max-w-4xl mx-auto bg-swiss-card border border-swiss-border rounded-xl p-8 shadow-sm flex flex-col md:flex-row justify-between items-center relative overflow-hidden gap-12 md:gap-4">
+                
+                <!-- Background Connection Vector -->
+                <div class="absolute inset-0 pointer-events-none hidden md:block">
+                    <svg class="w-full h-full" fill="none">
+                        <path d="M120 100 H 780" stroke="#ECECEC" stroke-width="2"/>
+                        <path d="M120 100 H 780" stroke="#1F7A53" stroke-width="2" class="animate-connection"/>
+                    </svg>
+                </div>
+
+                <!-- Stage 1: Notes -->
+                <div class="bg-neutral-50 border border-swiss-border p-5 rounded-xl w-48 text-center shadow-sm z-10">
+                    <div class="w-10 h-10 bg-swiss-card rounded-lg flex items-center justify-center border border-swiss-border mx-auto mb-3">
+                        <span class="material-symbols-outlined text-[20px] text-swiss-accent">edit_note</span>
+                    </div>
+                    <h4 class="text-xs font-bold text-swiss-text uppercase tracking-wider">Raw Notes</h4>
+                    <p class="text-[10px] text-swiss-secondary mt-1">Capture ideas, strategies and links instantly.</p>
+                </div>
+
+                <!-- Stage 2: Graph -->
+                <div class="bg-neutral-50 border border-swiss-border p-5 rounded-xl w-48 text-center shadow-sm z-10">
+                    <div class="w-10 h-10 bg-swiss-card rounded-lg flex items-center justify-center border border-swiss-border mx-auto mb-3">
+                        <span class="material-symbols-outlined text-[20px] text-swiss-accent">hub</span>
+                    </div>
+                    <h4 class="text-xs font-bold text-swiss-text uppercase tracking-wider">Brain Graph</h4>
+                    <p class="text-[10px] text-swiss-secondary mt-1">Automatic semantic mapping in the background.</p>
+                </div>
+
+                <!-- Stage 3: Pipeline -->
+                <div class="bg-neutral-50 border border-swiss-border p-5 rounded-xl w-48 text-center shadow-sm z-10">
+                    <div class="w-10 h-10 bg-swiss-card rounded-lg flex items-center justify-center border border-swiss-border mx-auto mb-3">
+                        <span class="material-symbols-outlined text-[20px] text-swiss-accent">view_kanban</span>
+                    </div>
+                    <h4 class="text-xs font-bold text-swiss-text uppercase tracking-wider">Pipeline</h4>
+                    <p class="text-[10px] text-swiss-secondary mt-1">Structure drafts and outlines into delivery channels.</p>
+                </div>
+
+                <!-- Stage 4: Published -->
+                <div class="bg-neutral-50 border border-swiss-border p-5 rounded-xl w-48 text-center shadow-sm z-10">
+                    <div class="w-10 h-10 bg-swiss-card rounded-lg flex items-center justify-center border border-swiss-border mx-auto mb-3">
+                        <span class="material-symbols-outlined text-[20px] text-swiss-accent">send</span>
+                    </div>
+                    <h4 class="text-xs font-bold text-swiss-text uppercase tracking-wider">Published</h4>
+                    <p class="text-[10px] text-swiss-secondary mt-1">Export drafts and system insights to the web.</p>
+                </div>
+
+            </div>
+        </section>
+
+        <!-- THREE PILLARS (Whitespace, restraint, simple bold blocks) -->
+        <section id="features" class="max-w-[1200px] mx-auto px-6 sm:px-10 mb-32 border-t border-swiss-border pt-24">
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-12 lg:gap-16">
+                
+                <!-- Pillar 1: Think -->
+                <div class="flex flex-col gap-5 items-start">
+                    <div class="w-12 h-12 bg-swiss-card rounded-xl border border-swiss-border flex items-center justify-center shadow-sm">
+                        <span class="material-symbols-outlined text-swiss-accent text-[22px]">psychology</span>
+                    </div>
+                    <h3 class="swiss-headline text-3xl text-swiss-text mt-2">Think</h3>
+                    <p class="text-[11px] font-bold text-swiss-accent uppercase tracking-widest -mt-2">Collect everything</p>
+                    <p class="text-sm text-swiss-secondary leading-relaxed font-medium">
+                        Index files, strategy pdfs, videos, quotes, and research papers. Pronoia processes materials without requiring manual tag configuration.
+                    </p>
+                </div>
+
+                <!-- Pillar 2: Write -->
+                <div class="flex flex-col gap-5 items-start">
+                    <div class="w-12 h-12 bg-swiss-card rounded-xl border border-swiss-border flex items-center justify-center shadow-sm">
+                        <span class="material-symbols-outlined text-swiss-accent text-[22px]">edit_document</span>
+                    </div>
+                    <h3 class="swiss-headline text-3xl text-swiss-text mt-2">Write</h3>
+                    <p class="text-[11px] font-bold text-swiss-accent uppercase tracking-widest -mt-2">Build ideas into content</p>
+                    <p class="text-sm text-swiss-secondary leading-relaxed font-medium">
+                        A distraction-free writing environment. The software actively tracks your thesis and floats contextual connections right on the margins.
+                    </p>
+                </div>
+
+                <!-- Pillar 3: Learn -->
+                <div class="flex flex-col gap-5 items-start">
+                    <div class="w-12 h-12 bg-swiss-card rounded-xl border border-swiss-border flex items-center justify-center shadow-sm">
+                        <span class="material-symbols-outlined text-swiss-accent text-[22px]">query_stats</span>
+                    </div>
+                    <h3 class="swiss-headline text-3xl text-swiss-text mt-2">Learn</h3>
+                    <p class="text-[11px] font-bold text-swiss-accent uppercase tracking-widest -mt-2">The system improves with you</p>
+                    <p class="text-sm text-swiss-secondary leading-relaxed font-medium">
+                        Your strategic decisions and publishing parameters form a continuous feedback loop, refining the system's reasoning confidence over time.
+                    </p>
+                </div>
+
+            </div>
+        </section>
+
+        <!-- WORKSPACE PREVIEW GRAPHIC -->
+        <section class="max-w-[1200px] mx-auto px-6 sm:px-10 mb-32 border-t border-swiss-border pt-24">
+            <div class="text-center max-w-3xl mx-auto mb-16">
+                <h2 class="swiss-headline text-4xl sm:text-5xl text-swiss-text mb-4">
+                    One unified workspace view.
+                </h2>
+                <p class="text-sm text-swiss-secondary max-w-md mx-auto leading-relaxed">
+                    Connect Today priority queue, Pipelines, the Brain graph, Moodboards, and Editor into a single continuous workspace.
+                </p>
+            </div>
+
+            <!-- Single elegant screenshot representation -->
+            <div class="bg-swiss-card border border-swiss-border rounded-xl shadow-swiss-premium overflow-hidden p-6 md:p-8 max-w-4xl mx-auto">
+                <div class="border border-swiss-border bg-neutral-50/50 rounded-xl p-4 md:p-8 flex flex-col md:flex-row justify-between items-start gap-8 min-h-[300px]">
+                    <div class="space-y-4 max-w-md">
+                        <div class="flex items-center gap-2.5">
+                            <span class="bg-swiss-accent text-[#FAFAF8] px-2.5 py-1 rounded text-[9px] font-bold uppercase tracking-wider">Evolving</span>
+                            <span class="text-[10px] text-swiss-secondary uppercase font-semibold tracking-wider">Workspace Node #124</span>
+                        </div>
+                        <h4 class="swiss-headline text-2xl text-swiss-text">Connecting strategy to delivery</h4>
+                        <p class="text-xs text-swiss-secondary leading-relaxed font-medium">
+                            Instead of jumping across disconnected productivity tools, Pronoia maintains your creative context across all modes, helping you produce high-quality work in less time.
+                        </p>
+                    </div>
+                    <div class="bg-swiss-card border border-swiss-border rounded-xl p-6 shadow-sm w-full md:w-80 flex flex-col gap-4">
+                        <div class="flex items-center justify-between border-b border-swiss-border pb-3">
+                            <span class="text-[10px] font-bold text-swiss-text uppercase tracking-wider">Active Workspace Modules</span>
+                            <span class="w-1.5 h-1.5 rounded-full bg-swiss-accent"></span>
+                        </div>
+                        <div class="space-y-2 text-xs font-semibold text-swiss-text text-left">
+                            <div class="flex items-center justify-between p-2 bg-neutral-50 rounded border border-swiss-border">
+                                <span class="flex items-center gap-2"><span class="material-symbols-outlined text-sm text-swiss-accent">today</span> Today priority queue</span>
+                                <span class="text-[10px] text-neutral-400">Synced</span>
+                            </div>
+                            <div class="flex items-center justify-between p-2 bg-neutral-50 rounded border border-swiss-border">
+                                <span class="flex items-center gap-2"><span class="material-symbols-outlined text-sm text-swiss-accent">view_kanban</span> Content pipeline</span>
+                                <span class="text-[10px] text-neutral-400">Drafting</span>
+                            </div>
+                            <div class="flex items-center justify-between p-2 bg-neutral-50 rounded border border-swiss-border">
+                                <span class="flex items-center gap-2"><span class="material-symbols-outlined text-sm text-swiss-accent">hub</span> Semantic Brain graph</span>
+                                <span class="text-[10px] text-neutral-400">1.2k Nodes</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- AI SECTION (The AI stays quiet. Until it matters.) -->
+        <section id="ai-philosophy" class="max-w-[1200px] mx-auto px-6 sm:px-10 mb-32 border-t border-swiss-border pt-24">
+            <div class="grid grid-cols-1 lg:grid-cols-12 gap-12 items-start">
+                
+                <!-- Left Side Copy -->
+                <div class="lg:col-span-5 flex flex-col gap-6 items-start">
+                    <span class="text-[11px] tracking-[0.2em] uppercase font-bold text-swiss-accent">Cognitive Design</span>
+                    <h2 class="swiss-headline text-5xl sm:text-6xl text-swiss-text tracking-tight max-w-sm">
+                        The AI stays quiet. Until it matters.
+                    </h2>
+                    <p class="text-sm text-swiss-secondary leading-relaxed font-medium">
+                        We don't build chat text boxes that interrupt your writing. Pronoia indexes in the background and surfaces suggestions precisely when you need them.
+                    </p>
+                </div>
+
+                <!-- Right Side: 4 AI features -->
+                <div class="lg:col-span-7 grid grid-cols-1 sm:grid-cols-2 gap-6 lg:pl-8">
+                    <!-- Feature 1 -->
+                    <div class="bg-swiss-card border border-swiss-border p-6 rounded-xl shadow-sm">
+                        <span class="text-[9px] uppercase tracking-wider text-swiss-accent font-bold block mb-1">Feature 01</span>
+                        <h4 class="text-base font-bold text-swiss-text mb-2">Ambient Suggestions</h4>
+                        <p class="text-xs text-swiss-secondary leading-relaxed font-medium">
+                            Quietly lists matching documents, links, and PDF quotes in the screen margin as you type.
+                        </p>
+                    </div>
+                    <!-- Feature 2 -->
+                    <div class="bg-swiss-card border border-swiss-border p-6 rounded-xl shadow-sm">
+                        <span class="text-[9px] uppercase tracking-wider text-swiss-accent font-bold block mb-1">Feature 02</span>
+                        <h4 class="text-base font-bold text-swiss-text mb-2">Cognitive Reasoning</h4>
+                        <p class="text-xs text-swiss-secondary leading-relaxed font-medium">
+                            Uses our Executive Function Engine to prioritize decisions based on deadline pressure and ROI.
+                        </p>
+                    </div>
+                    <!-- Feature 3 -->
+                    <div class="bg-swiss-card border border-swiss-border p-6 rounded-xl shadow-sm">
+                        <span class="text-[9px] uppercase tracking-wider text-swiss-accent font-bold block mb-1">Feature 03</span>
+                        <h4 class="text-base font-bold text-swiss-text mb-2">Traceability</h4>
+                        <p class="text-xs text-swiss-secondary leading-relaxed font-medium">
+                            Trace every suggestion or outlined note back to its original research file in one click.
+                        </p>
+                    </div>
+                    <!-- Feature 4 -->
+                    <div class="bg-swiss-card border border-swiss-border p-6 rounded-xl shadow-sm">
+                        <span class="text-[9px] uppercase tracking-wider text-swiss-accent font-bold block mb-1">Feature 04</span>
+                        <h4 class="text-base font-bold text-swiss-text mb-2">Knowledge Evaluation</h4>
+                        <p class="text-xs text-swiss-secondary leading-relaxed font-medium">
+                            Runs structural validation rules to flag contradictions and check information quality metrics.
+                        </p>
+                    </div>
+                </div>
+
+            </div>
+        </section>
+
+        <!-- FINAL CTA -->
+        <section class="max-w-[1200px] mx-auto px-6 sm:px-10 text-center py-24 border-t border-swiss-border">
+            <h2 class="swiss-headline text-5xl sm:text-7xl text-swiss-text max-w-3xl mx-auto mb-6">
+                Build your second brain. That actually thinks.
+            </h2>
+            <div class="flex justify-center items-center gap-4 mt-8">
+                <a class="bg-swiss-accent text-[#FAFAF8] px-8 py-3.5 rounded-lg font-semibold hover:bg-emerald-800 transition-all shadow-sm text-sm" href="#">
+                    Join Beta
+                </a>
+                <a class="bg-swiss-card border border-swiss-border text-swiss-text px-8 py-3.5 rounded-lg font-semibold hover:bg-neutral-50 transition-all text-sm" href="#">
+                    Request Access
+                </a>
+            </div>
+        </section>
+
+    </main>
+
+    <!-- FOOTER -->
+    <footer class="w-full border-t border-swiss-border bg-transparent py-12">
+        <div class="max-w-[1200px] mx-auto px-6 sm:px-10 flex flex-col md:flex-row justify-between items-center gap-8">
+            <div class="flex items-center gap-4">
+                <img src="./logo-mark.png" alt="Creator OS Logo" class="w-4 h-4 object-contain grayscale" onerror="this.style.display='none'">
+                <span class="text-sm font-bold tracking-tight text-swiss-text">Creator OS</span>
+                <span class="text-xs text-swiss-secondary">© 2026 Creator OS by Pronoia. Engineered for precision.</span>
+            </div>
+            <div class="flex flex-wrap items-center gap-6 text-xs font-semibold text-swiss-secondary">
+                <a class="hover:text-swiss-text transition-colors" href="#">Twitter</a>
+                <a class="hover:text-swiss-text transition-colors" href="#">GitHub</a>
+                <a class="hover:text-swiss-text transition-colors" href="#">Terms</a>
+                <a class="hover:text-swiss-text transition-colors" href="#">Privacy</a>
+            </div>
+        </div>
+    </footer>
+
+    <!-- Interactive Workspace Preview Script -->
+    <script>
+        function previewWorkspace(viewId) {
+            // Hide all views
+            document.getElementById('w-view-today').classList.add('hidden');
+            document.getElementById('w-view-pipeline').classList.add('hidden');
+            document.getElementById('w-view-brain').classList.add('hidden');
+            document.getElementById('w-view-moodboards').classList.add('hidden');
+            document.getElementById('w-view-editor').classList.add('hidden');
+            
+            // Remove active style classes from all buttons
+            const buttons = ['today', 'pipeline', 'brain', 'moodboards', 'editor'];
+            buttons.forEach(btn => {
+                const element = document.getElementById(`w-btn-${btn}`);
+                element.className = "w-full flex items-center gap-2.5 px-2.5 py-2 text-xs font-semibold rounded-lg text-swiss-secondary hover:bg-neutral-100 text-left spring-transition";
+            });
+
+            // Show selected view
+            document.getElementById(`w-view-${viewId}`).classList.remove('hidden');
+            
+            // Apply active class to the button
+            const activeBtn = document.getElementById(`w-btn-${viewId}`);
+            activeBtn.className = "w-full flex items-center gap-2.5 px-2.5 py-2 text-xs font-semibold rounded-lg bg-white border border-swiss-border text-swiss-text text-left spring-transition";
+        }
+    </script>
+
+</body>
+</html>

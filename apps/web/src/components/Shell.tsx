@@ -71,9 +71,8 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, resource, projectNa
         boxShadow: isMobile && open ? '0 0 40px rgba(0,0,0,0.18)' : 'none',
       }}>
         {/* Logo */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '0 8px', marginBottom: '8px' }}>
-          <span style={{ width: '14px', height: '14px', background: 'var(--accent-color)', transform: 'rotate(45deg)', borderRadius: '2px', display: 'inline-block' }} />
-          <span style={{ fontSize: '13px', fontWeight: 700, letterSpacing: '0.08em', color: 'var(--text-primary)' }}>PRONOIA</span>
+        <div style={{ display: 'flex', alignItems: 'center', padding: '0 8px', marginBottom: '12px' }}>
+          <img src="/logo.png" alt="Pronoia" style={{ height: '22px', mixBlendMode: 'multiply', objectFit: 'contain' }} />
         </div>
 
         <div style={groupLabel}>WORKSPACE</div>

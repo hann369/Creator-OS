@@ -2,10 +2,12 @@ import React, { useEffect, useRef, useState } from 'react';
 import {
   GraduationCap, Plus, Trash2, ChevronLeft, ChevronUp, ChevronDown, Upload,
   Image as ImageIcon, Video, FileText, Code2, Type, Heading, Minus, Megaphone, Globe, Eye, EyeOff,
+  ExternalLink, Copy, Check,
 } from 'lucide-react';
 import { useIsMobile } from '../hooks/useIsMobile.js';
 import { useCourses } from '../hooks/useCourses.js';
 import { useCourseContent } from '../hooks/useCourseContent.js';
+import { useCourseSales } from '../hooks/useCourseSales.js';
 import { uploadCourseMedia, signedMediaUrl } from '../lib/media.js';
 import { type Course, type Block, type BlockType, isMediaBlock } from '../lib/courseTypes.js';
 
@@ -94,6 +96,18 @@ const StatusBadge: React.FC<{ status: Course['status'] }> = ({ status }) => {
   return <span style={{ fontSize: '9px', fontFamily: 'var(--font-mono)', letterSpacing: '0.06em', padding: '3px 7px', borderRadius: '99px', background: s.bg, color: s.fg, flexShrink: 0 }}>{s.label.toUpperCase()}</span>;
 };
 
+// Creator ledger for one course — appears once the course has buyers.
+const SalesPanel: React.FC<{ courseId: string; currency: string }> = ({ courseId, currency }) => {
+  const { buyers, netCents, loading } = useCourseSales(courseId);
+  if (loading || (buyers === 0 && netCents === 0)) return null;
+  return (
+    <div style={{ display: 'flex', gap: '18px', fontSize: '11px', fontFamily: 'var(--font-mono)', color: 'var(--text-secondary)' }}>
+      <span>{buyers} {buyers === 1 ? 'Käufer' : 'Käufer'}</span>
+      <span>Umsatz (netto): <span style={{ color: 'var(--accent-color)' }}>{(netCents / 100).toFixed(2)} {currency.toUpperCase()}</span></span>
+    </div>
+  );
+};
+
 // ─── Per-course builder ───────────────────────────────────────────────────────
 interface EditorProps {
   course: Course;
@@ -108,9 +122,19 @@ const CourseEditor: React.FC<EditorProps> = ({ course, onBack, updateCourse, del
   const isMobile = useIsMobile();
   const content = useCourseContent(course.id);
   const [activePageId, setActivePageId] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
 
   const activePage = content.pages.find(p => p.id === activePageId) ?? null;
   const orderedChapters = [...content.chapters].sort((a, b) => a.position - b.position);
+
+  // Absolute, shareable URL — set once the course has a slug (i.e. after publish).
+  const publicUrl = course.slug ? `${window.location.origin}/c/${course.slug}` : '';
+  const isLive = course.status === 'published';
+
+  const handleCopy = async () => {
+    if (!publicUrl) return;
+    try { await navigator.clipboard.writeText(publicUrl); setCopied(true); setTimeout(() => setCopied(false), 1800); } catch { /* ignore */ }
+  };
 
   return (
     <div className="view-body" style={{ maxWidth: '1100px', margin: '0 auto', padding: '32px 24px 120px' }}>
@@ -128,7 +152,7 @@ const CourseEditor: React.FC<EditorProps> = ({ course, onBack, updateCourse, del
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
           <StatusBadge status={course.status} />
-          {course.status === 'published' ? (
+          {isLive ? (
             <button className="btn-sage-secondary" onClick={() => unpublishCourse(course.id)} style={{ padding: '8px 14px', fontSize: '12px' }}>Zurückziehen</button>
           ) : (
             <button className="btn-sage-primary" onClick={() => publishCourse(course)} style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '8px 16px', fontSize: '12px' }}>
@@ -139,7 +163,25 @@ const CourseEditor: React.FC<EditorProps> = ({ course, onBack, updateCourse, del
         </div>
       </div>
 
-      {/* Price + public link */}
+      {/* Live banner — makes a successful publish unmistakable + shareable. */}
+      {isLive && publicUrl && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '12px', padding: '14px 16px', borderRadius: '12px', background: 'var(--accent-light)', border: '1px solid rgba(15,90,71,0.12)', margin: '8px 0 20px' }}>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '7px', fontSize: '13px', fontWeight: 600, color: 'var(--accent-color)' }}>
+            <Globe size={15} /> Kurs ist live
+          </span>
+          <a href={publicUrl} target="_blank" rel="noreferrer" style={{ flex: '1 1 240px', minWidth: 0, fontSize: '12px', fontFamily: 'var(--font-mono)', color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textDecoration: 'none' }}>
+            {publicUrl}
+          </a>
+          <button onClick={handleCopy} className="btn-sage-secondary" style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '7px 12px', fontSize: '12px' }}>
+            {copied ? <><Check size={13} /> Kopiert</> : <><Copy size={13} /> Link kopieren</>}
+          </button>
+          <a href={publicUrl} target="_blank" rel="noreferrer" className="btn-sage-primary" style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '7px 14px', fontSize: '12px', textDecoration: 'none' }}>
+            <ExternalLink size={13} /> Ansehen
+          </a>
+        </div>
+      )}
+
+      {/* Price + hint */}
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '18px', alignItems: 'center', padding: '14px 0 22px', borderBottom: '1px solid var(--border-color)', marginBottom: '24px' }}>
         <label style={{ fontSize: '11px', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '8px', fontFamily: 'var(--font-mono)' }}>
           PREIS
@@ -151,15 +193,12 @@ const CourseEditor: React.FC<EditorProps> = ({ course, onBack, updateCourse, del
           </select>
           <span style={{ opacity: 0.6 }}>{course.priceCents === 0 ? '· kostenlos' : ''}</span>
         </label>
-        {course.slug && (
-          <div style={{ fontSize: '11px', color: 'var(--text-secondary)', fontFamily: 'var(--font-mono)', display: 'flex', alignItems: 'center', gap: '8px' }}>
-            Öffentlich:
-            <a href={`/c/${course.slug}`} target="_blank" rel="noreferrer" style={{ color: 'var(--accent-color)', textDecoration: 'none' }}>/c/{course.slug}</a>
-            {course.status === 'published'
-              ? <span style={{ opacity: 0.6 }}>· live</span>
-              : <span style={{ opacity: 0.6 }}>· erst nach Veröffentlichen sichtbar</span>}
+        {!isLive && (
+          <div style={{ fontSize: '11px', color: 'var(--text-secondary)', fontFamily: 'var(--font-mono)' }}>
+            Noch nicht veröffentlicht — klick <span style={{ color: 'var(--accent-color)' }}>Veröffentlichen</span>, um eine öffentliche Kurs-Seite zu erzeugen.
           </div>
         )}
+        <SalesPanel courseId={course.id} currency={course.currency} />
       </div>
 
       {/* Structure + blocks */}

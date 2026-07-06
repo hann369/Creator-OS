@@ -16,7 +16,7 @@
       "destination": "/api"
     },
     {
-      "source": "/((?!api|ws|assets|vite).*)",
+      "source": "/:path((?!api|ws|assets|vite).*)",
       "destination": "/index.html"
     }
   ]

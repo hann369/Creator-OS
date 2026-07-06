@@ -34,8 +34,7 @@ export const ProjectsScreen: React.FC<ProjectsScreenProps> = ({ projects, onOpen
         padding: '0 28px', boxSizing: 'border-box',
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <span style={{ width: '14px', height: '14px', background: 'var(--accent-color)', transform: 'rotate(45deg)', borderRadius: '2px', display: 'inline-block' }} />
-          <span style={{ fontSize: '13px', fontWeight: 700, letterSpacing: '0.08em', color: 'var(--text-primary)' }}>PRONOIA</span>
+          <img src="/logo.png" alt="Pronoia" style={{ height: '20px', mixBlendMode: 'multiply', objectFit: 'contain' }} />
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
           <button style={{

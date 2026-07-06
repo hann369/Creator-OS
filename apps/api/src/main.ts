@@ -7,9 +7,15 @@ import { brandDnaRouter } from './controllers/brandDna.js';
 import { reasoningRouter } from './controllers/reasoning.js';
 import { socialRouter } from './controllers/social.js';
 import { telegramRouter } from './controllers/telegram.js';
+import { coursesRouter, stripeWebhookHandler } from './controllers/courses.js';
 import { ThinkingWebSocketController } from './controllers/thinking.js';
 
 const app = express();
+
+// Stripe webhook needs the RAW request body for signature verification, so it is
+// registered BEFORE the JSON body parser.
+app.post('/api/v1/stripe/webhook', express.raw({ type: '*/*' }), stripeWebhookHandler);
+
 app.use(express.json());
 
 // Set up HTTP REST endpoints
@@ -19,6 +25,7 @@ app.use('/api/v1/brand-dna', brandDnaRouter);
 app.use('/api/v1/reasoning', reasoningRouter);
 app.use('/api/v1/social', socialRouter);
 app.use('/api/v1/telegram', telegramRouter);
+app.use('/api/v1/courses', coursesRouter);
 
 const server = createServer(app);
 
