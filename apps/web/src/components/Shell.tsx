@@ -1,11 +1,11 @@
 import React from 'react';
-import { Calendar, GitBranch, Brain, LayoutGrid, FileText, Package, Users, Target, Search, ChevronLeft, Fingerprint, Lightbulb, LogOut, Menu } from 'lucide-react';
+import { Calendar, GitBranch, Brain, LayoutGrid, FileText, Package, Users, Target, Search, ChevronLeft, Fingerprint, Lightbulb, LogOut, Menu, GraduationCap } from 'lucide-react';
 import { useAuth } from '../context/AuthContext.js';
 import { useGoals } from '../hooks/useGoals.js';
 import { userInitial } from '../lib/user.js';
 
 export type WorkspaceTab = 'morning' | 'pipeline' | 'brain';
-export type ResourceView = 'ideation' | 'moodboards' | 'identity' | 'documents' | 'assets' | 'people' | 'goals';
+export type ResourceView = 'ideation' | 'moodboards' | 'identity' | 'documents' | 'assets' | 'people' | 'goals' | 'courses';
 
 export const SIDEBAR_W = 224;
 export const TOPBAR_H = 52;
@@ -23,7 +23,8 @@ const RESOURCES: { res: ResourceView; label: string; icon: React.ReactNode }[] =
   { res: 'identity', label: 'Identity', icon: <Fingerprint size={15} /> },
   { res: 'assets', label: 'Assets', icon: <Package size={15} /> },
   { res: 'people', label: 'People', icon: <Users size={15} /> },
-  { res: 'goals', label: 'Goals', icon: <Target size={15} /> }
+  { res: 'goals', label: 'Goals', icon: <Target size={15} /> },
+  { res: 'courses', label: 'Course Maker', icon: <GraduationCap size={15} /> }
 ];
 
 const navItemStyle = (active: boolean): React.CSSProperties => ({

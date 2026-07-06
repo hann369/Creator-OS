@@ -14,6 +14,7 @@ import { GoalsView } from './views/GoalsView.js';
 import { DocumentsView } from './views/DocumentsView.js';
 import { AssetsView } from './views/AssetsView.js';
 import { PeopleView } from './views/PeopleView.js';
+import { CourseBuilderView } from './views/CourseBuilderView.js';
 import { Sidebar, TopBar, ResourcePlaceholder, SIDEBAR_W, TOPBAR_H, type ResourceView } from './components/Shell.js';
 import { useIsMobile } from './hooks/useIsMobile.js';
 import { useWorkspace } from './context/WorkspaceContext.js';
@@ -267,6 +268,8 @@ export const App: React.FC<AppProps> = ({ project, onExitProject }) => {
             <AssetsView />
           ) : resource === 'people' ? (
             <PeopleView />
+          ) : resource === 'courses' ? (
+            <CourseBuilderView />
           ) : resource ? (
             <ResourcePlaceholder name={resource} />
           ) : (

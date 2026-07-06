@@ -8,6 +8,7 @@ import { AuthScreen } from './components/AuthScreen.tsx'
 import { ProjectsScreen } from './components/ProjectsScreen.tsx'
 import { useProjects, type ProjectItem } from './hooks/useProjects.ts'
 import { setActiveWorkspaceId } from './lib/workspace.ts'
+import { CourseViewer } from './views/CourseViewer.tsx'
 
 // Gateway: show the projects screen first; entering a project mounts the
 // workspace. Each project is its OWN data scope — the active project's id becomes
@@ -40,10 +41,29 @@ function Root() {
   return <Workspace />
 }
 
-createRoot(document.getElementById('root')!).render(
-  <StrictMode>
-    <AuthProvider>
-      <Root />
-    </AuthProvider>
-  </StrictMode>,
-)
+// Minimal, dependency-free routing split (matches the codebase's build-our-own
+// ethos — own store, own test harness, no router lib). Two surfaces:
+//   • /c/:slug          → PUBLIC course viewer, OUTSIDE the auth gate
+//   • everything else    → the auth-gated studio
+// Vercel already rewrites deep links to index.html, so /c/:slug resolves here.
+function render() {
+  const match = window.location.pathname.match(/^\/c\/([^/]+)\/?$/);
+  const root = createRoot(document.getElementById('root')!);
+  if (match) {
+    root.render(
+      <StrictMode>
+        <CourseViewer slug={decodeURIComponent(match[1])} />
+      </StrictMode>,
+    );
+    return;
+  }
+  root.render(
+    <StrictMode>
+      <AuthProvider>
+        <Root />
+      </AuthProvider>
+    </StrictMode>,
+  );
+}
+
+render()
