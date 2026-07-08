@@ -395,3 +395,239 @@ test('Telegram Instant Recall (B2)', async () => {
     globalThis.fetch = originalFetch;
   }
 });
+
+test('Telegram Direct Command /doc (B2 extension)', async () => {
+  const insertedDocuments: any[] = [];
+  const sentMessages: any[] = [];
+
+  supabaseAdmin.from = (table: string): any => {
+    if (table === 'processed_telegram_updates') {
+      return {
+        select: () => ({
+          eq: (col: string, val: any) => ({
+            maybeSingle: async () => {
+              return { data: null, error: null };
+            }
+          })
+        }),
+        insert: async (row: any) => {
+          return { error: null };
+        }
+      };
+    }
+
+    if (table === 'telegram_links') {
+      return {
+        select: () => ({
+          eq: () => ({
+            maybeSingle: async () => {
+              return { data: { owner_id: 'test-user', linked_at: new Date().toISOString(), active_project_id: 'main-space' }, error: null };
+            }
+          })
+        })
+      };
+    }
+
+    if (table === 'projects') {
+      return {
+        select: () => ({
+          eq: () => ({
+            order: async () => {
+              return { data: [{ id: 'main-space', name: 'Main Space' }], error: null };
+            }
+          })
+        })
+      };
+    }
+
+    if (table === 'documents') {
+      return {
+        insert: async (row: any) => {
+          insertedDocuments.push(row);
+          return { error: null };
+        }
+      };
+    }
+
+    return originalFrom.call(supabaseAdmin, table);
+  };
+
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (url: any, options?: any) => {
+    const urlStr = url.toString();
+    if (urlStr.includes('/chat/completions')) {
+      return new Response(JSON.stringify({
+        choices: [{ message: { content: 'Mock Title' } }]
+      }));
+    }
+    if (urlStr.includes('/sendMessage')) {
+      const body = JSON.parse(options.body);
+      sentMessages.push(body);
+      return new Response(JSON.stringify({ ok: true }));
+    }
+    return originalFetch(url, options);
+  };
+
+  try {
+    const res = await fetch(`http://localhost:${port}/api/v1/telegram/webhook`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-telegram-bot-api-secret-token': testSecret
+      },
+      body: JSON.stringify({
+        update_id: 7001,
+        message: {
+          chat: { id: 123 },
+          from: { id: 123, username: 'tester' },
+          text: '/doc Dies ist eine wichtige Projektskizze'
+        }
+      })
+    });
+
+    assert.equal(res.status, 200);
+    const data: any = await res.json();
+    assert.equal(data.ok, true);
+
+    // Assert document was created
+    assert.equal(insertedDocuments.length, 1);
+    assert.equal(insertedDocuments[0].body, 'Dies ist eine wichtige Projektskizze');
+    assert.equal(insertedDocuments[0].title, 'Mock Title');
+    
+    // Assert confirmation was sent
+    assert.ok(sentMessages.some(m => m.text.includes('Dokument gespeichert') && m.text.includes('Main Space')));
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('Telegram Toggle Idea to Document Callback (B2 extension)', async () => {
+  let deletedIdeaId = '';
+  const insertedDocuments: any[] = [];
+  let answerCallbackText = '';
+
+  supabaseAdmin.from = (table: string): any => {
+    if (table === 'processed_telegram_updates') {
+      return {
+        select: () => ({
+          eq: (col: string, val: any) => ({
+            maybeSingle: async () => {
+              return { data: null, error: null };
+            }
+          })
+        }),
+        insert: async (row: any) => {
+          return { error: null };
+        }
+      };
+    }
+
+    if (table === 'telegram_links') {
+      return {
+        select: () => ({
+          eq: () => ({
+            maybeSingle: async () => {
+              return { data: { owner_id: 'test-user', linked_at: new Date().toISOString() }, error: null };
+            }
+          })
+        })
+      };
+    }
+
+    if (table === 'projects') {
+      return {
+        select: () => ({
+          eq: () => ({
+            order: async () => {
+              return { data: [{ id: 'main-space', name: 'Main Space' }], error: null };
+            }
+          })
+        })
+      };
+    }
+
+    if (table === 'ideas') {
+      return {
+        select: () => ({
+          eq: () => ({
+            maybeSingle: async () => {
+              return { data: { title: 'Mein urspruenglicher Text' }, error: null };
+            }
+          })
+        }),
+        delete: () => ({
+          eq: async (col: string, val: any) => {
+            deletedIdeaId = val;
+            return { error: null };
+          }
+        })
+      };
+    }
+
+    if (table === 'documents') {
+      return {
+        insert: async (row: any) => {
+          insertedDocuments.push(row);
+          return { error: null };
+        }
+      };
+    }
+
+    return originalFrom.call(supabaseAdmin, table);
+  };
+
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (url: any, options?: any) => {
+    const urlStr = url.toString();
+    if (urlStr.includes('/chat/completions')) {
+      return new Response(JSON.stringify({
+        choices: [{ message: { content: 'Umgewandelter Titel' } }]
+      }));
+    }
+    if (urlStr.includes('/answerCallbackQuery')) {
+      const body = JSON.parse(options.body);
+      answerCallbackText = body.text;
+      return new Response(JSON.stringify({ ok: true }));
+    }
+    if (urlStr.includes('/editMessageText')) {
+      return new Response(JSON.stringify({ ok: true }));
+    }
+    return originalFetch(url, options);
+  };
+
+  try {
+    const res = await fetch(`http://localhost:${port}/api/v1/telegram/webhook`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-telegram-bot-api-secret-token': testSecret
+      },
+      body: JSON.stringify({
+        update_id: 8001,
+        callback_query: {
+          id: 'cb-123',
+          from: { id: 123 },
+          message: {
+            message_id: 999,
+            chat: { id: 123 }
+          },
+          data: 'todoc:idea-1234:main-space'
+        }
+      })
+    });
+
+    assert.equal(res.status, 200);
+    
+    // Assert old idea was deleted
+    assert.equal(deletedIdeaId, 'idea-1234');
+    
+    // Assert new document was created
+    assert.equal(insertedDocuments.length, 1);
+    assert.equal(insertedDocuments[0].body, 'Mein urspruenglicher Text');
+    assert.equal(insertedDocuments[0].title, 'Umgewandelter Titel');
+    assert.equal(insertedDocuments[0].project_id, 'main-space');
+    assert.equal(answerCallbackText, 'In Dokument umgewandelt');
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});

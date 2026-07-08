@@ -283,7 +283,7 @@ async function setPendingIdea(ownerId: string, text: string | null): Promise<voi
 
 /** Insert an idea, routed to a project. project_id is the real linkage; workspace_id
  *  mirrors it so it surfaces in that project once the web scopes by project. */
-async function captureIdea(ownerId: string, title: string, projectId: string | null): Promise<void> {
+async function captureIdea(ownerId: string, title: string, projectId: string | null): Promise<string> {
   const now = new Date().toISOString();
   const id = `idea-${crypto.randomUUID().slice(0, 8)}`;
   const { error } = await supabaseAdmin.from('ideas').insert({
@@ -292,6 +292,25 @@ async function captureIdea(ownerId: string, title: string, projectId: string | n
     created_at: now, updated_at: now,
   });
   if (error) throw error;
+  return id;
+}
+
+async function captureDocument(ownerId: string, title: string, body: string, projectId: string | null): Promise<string> {
+  const now = new Date().toISOString();
+  const id = `doc-${crypto.randomUUID().slice(0, 8)}`;
+  const { error } = await supabaseAdmin.from('documents').insert({
+    id, workspace_id: projectId ?? DEFAULT_WORKSPACE, owner_id: ownerId, project_id: projectId,
+    title: title.slice(0, 500), body, tags: [],
+    created_at: now, updated_at: now,
+  });
+  if (error) throw error;
+  return id;
+}
+
+async function generateTitle(text: string): Promise<string> {
+  const systemPrompt = 'Du bist ein Assistent, der kurze, prägnante Titel (3-5 Worte) in Deutsch für Notizen generiert. Antworte NUR mit dem Titel, ohne Anführungszeichen oder Punkte.';
+  const title = await askMistral(`Generiere einen kurzen Titel für diesen Text:\n\n${text}`, systemPrompt);
+  return title ? title.trim() : (text.length > 50 ? text.slice(0, 47) + '...' : text);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -416,7 +435,22 @@ async function processUpdate(update: any): Promise<void> {
       return;
     }
 
-    let processedText = trimmed;
+    const isDocCmd = trimmed.toLowerCase().startsWith('/doc ') || trimmed.toLowerCase().startsWith('/document ');
+    const isIdeaCmd = trimmed.toLowerCase().startsWith('/idea ');
+    let forcedType: 'idea' | 'document' | null = null;
+    let textToRoute = trimmed;
+
+    if (isDocCmd) {
+      forcedType = 'document';
+      const parts = trimmed.split(/\s+/);
+      textToRoute = parts.slice(1).join(' ').trim();
+    } else if (isIdeaCmd) {
+      forcedType = 'idea';
+      const parts = trimmed.split(/\s+/);
+      textToRoute = parts.slice(1).join(' ').trim();
+    }
+
+    let processedText = textToRoute;
     if (voice?.file_id) {
       await tgSend(chatId, '🎙️ _Transkribiere Sprachnachricht..._');
       const filePath = await getTelegramFilePath(voice.file_id);
@@ -438,8 +472,8 @@ async function processUpdate(update: any): Promise<void> {
       return;
     }
 
-    // ── Default: capture as an idea, routed to a project ──
-    await routeIdea(link, { chatId, text: processedText });
+    // ── Default: capture as specified type (or fallback to idea), routed to a project ──
+    await routeContent(link, { chatId, text: processedText }, forcedType ?? 'idea');
   } catch (err) {
     console.error('[telegram] processUpdate error:', (err as Error).message);
     await tgSend(chatId, 'Kurzer Fehler beim Speichern — bitte nochmal versuchen.');
@@ -447,31 +481,70 @@ async function processUpdate(update: any): Promise<void> {
 }
 
 /** Decide where a captured idea goes: active project, the only project, or ask. */
-async function routeIdea(link: Link, msg: { chatId: number; text: string }): Promise<void> {
+async function routeContent(link: Link, msg: { chatId: number; text: string }, type: 'idea' | 'document'): Promise<void> {
   const projects = await getProjects(link.owner_id);
+  const projectId = link.active_project_id;
+  const activeName = projectName(projects, projectId);
 
-  // Active project set & still valid → route straight there.
-  const activeName = projectName(projects, link.active_project_id);
-  if (link.active_project_id && activeName) {
-    await captureIdea(link.owner_id, msg.text, link.active_project_id);
-    await tgSend(msg.chatId, `💡 Idee gespeichert in *${md(activeName)}*.`, {
-      inline_keyboard: [[{ text: '📂 Anderes Projekt', callback_data: 'change' }]],
-    });
+  if (projectId && activeName) {
+    if (type === 'idea') {
+      const ideaId = await captureIdea(link.owner_id, msg.text, projectId);
+      await tgSend(msg.chatId, `💡 Idee gespeichert in *${md(activeName)}*.`, {
+        inline_keyboard: [
+          [
+            { text: '📄 In Dokument umwandeln', callback_data: `todoc:${ideaId}:${projectId}` },
+            { text: '📂 Anderes Projekt', callback_data: 'change' }
+          ]
+        ],
+      });
+    } else {
+      const docTitle = await generateTitle(msg.text);
+      const docId = await captureDocument(link.owner_id, docTitle, msg.text, projectId);
+      await tgSend(msg.chatId, `📄 Dokument gespeichert in *${md(activeName)}*.\n_Titel: "${md(docTitle)}"_`, {
+        inline_keyboard: [
+          [
+            { text: '💡 In Idee umwandeln', callback_data: `toidea:${docId}:${projectId}` },
+            { text: '📂 Anderes Projekt', callback_data: 'change' }
+          ]
+        ],
+      });
+    }
     return;
   }
 
-  // Zero or one project → no decision to make.
   if (projects.length <= 1) {
     const only = projects[0];
-    await captureIdea(link.owner_id, msg.text, only?.id ?? null);
-    if (only) await setActiveProject(link.owner_id, only.id);
-    await tgSend(msg.chatId, only ? `💡 Idee gespeichert in *${md(only.name)}*.` : '💡 Idee gespeichert.');
+    const pId = only?.id ?? null;
+    const pName = only ? only.name : '';
+    if (only) await setActiveProject(link.owner_id, pId);
+
+    if (type === 'idea') {
+      const ideaId = await captureIdea(link.owner_id, msg.text, pId);
+      await tgSend(msg.chatId, only ? `💡 Idee gespeichert in *${md(pName)}*.` : '💡 Idee gespeichert.', {
+        inline_keyboard: [
+          [
+            { text: '📄 In Dokument umwandeln', callback_data: `todoc:${ideaId}:${pId}` }
+          ]
+        ]
+      });
+    } else {
+      const docTitle = await generateTitle(msg.text);
+      const docId = await captureDocument(link.owner_id, docTitle, msg.text, pId);
+      await tgSend(msg.chatId, only ? `📄 Dokument gespeichert in *${md(pName)}*.\n_Titel: "${md(docTitle)}"_` : `📄 Dokument gespeichert.\n_Titel: "${md(docTitle)}"_`, {
+        inline_keyboard: [
+          [
+            { text: '💡 In Idee umwandeln', callback_data: `toidea:${docId}:${pId}` }
+          ]
+        ]
+      });
+    }
     return;
   }
 
-  // Multiple projects, none active → ask which one, holding the idea.
-  await setPendingIdea(link.owner_id, msg.text);
-  await tgSend(msg.chatId, `💡 _"${md(msg.text.slice(0, 80))}"_\n\nZu welchem Projekt?`, projectKeyboard(projects, 'pick'));
+  // Multiple projects, none active → ask which one, holding the text with prefix.
+  await setPendingIdea(link.owner_id, `${type}:${msg.text}`);
+  const displayType = type === 'idea' ? 'Idee' : 'Dokument';
+  await tgSend(msg.chatId, `📥 _[${displayType}] "${md(msg.text.slice(0, 80))}"_\n\nZu welchem Projekt?`, projectKeyboard(projects, 'pick'));
 }
 
 // ─── Inline-button callbacks (project routing) ───────────────────────────────
@@ -496,22 +569,124 @@ async function processCallback(cb: any): Promise<void> {
   }
 
   const name = projectName(projects, projectId);
+
+  if (action === 'todoc') {
+    const ideaId = projectId;
+    const pId = data.split(':')[2] || null;
+    const pName = projectName(projects, pId) ?? 'Main Space';
+
+    const { data: idea, error: fetchErr } = await supabaseAdmin
+      .from('ideas')
+      .select('title')
+      .eq('id', ideaId)
+      .maybeSingle();
+
+    if (fetchErr || !idea) {
+      await tgAnswerCallback(cb.id, 'Idee nicht gefunden.');
+      return;
+    }
+
+    await supabaseAdmin.from('ideas').delete().eq('id', ideaId);
+    const docTitle = await generateTitle(idea.title);
+    const docId = await captureDocument(link.owner_id, docTitle, idea.title, pId);
+
+    await tgAnswerCallback(cb.id, 'In Dokument umgewandelt');
+    await tgEditText(chatId, messageId, `📄 Dokument gespeichert in *${md(pName)}*.\n_Titel: "${md(docTitle)}"_`, {
+      inline_keyboard: [
+        [
+          { text: '💡 In Idee umwandeln', callback_data: `toidea:${docId}:${pId}` },
+          { text: '📂 Anderes Projekt', callback_data: 'change' }
+        ]
+      ]
+    });
+    return;
+  }
+
+  if (action === 'toidea') {
+    const docId = projectId;
+    const pId = data.split(':')[2] || null;
+    const pName = projectName(projects, pId) ?? 'Main Space';
+
+    const { data: doc, error: fetchErr } = await supabaseAdmin
+      .from('documents')
+      .select('title, body')
+      .eq('id', docId)
+      .maybeSingle();
+
+    if (fetchErr || !doc) {
+      await tgAnswerCallback(cb.id, 'Dokument nicht gefunden.');
+      return;
+    }
+
+    await supabaseAdmin.from('documents').delete().eq('id', docId);
+    const originalText = doc.body || doc.title;
+    const ideaId = await captureIdea(link.owner_id, originalText, pId);
+
+    await tgAnswerCallback(cb.id, 'In Idee umgewandelt');
+    await tgEditText(chatId, messageId, `💡 Idee gespeichert in *${md(pName)}*.`, {
+      inline_keyboard: [
+        [
+          { text: '📄 In Dokument umwandeln', callback_data: `todoc:${ideaId}:${pId}` },
+          { text: '📂 Anderes Projekt', callback_data: 'change' }
+        ]
+      ]
+    });
+    return;
+  }
+
   if (!name) { await tgAnswerCallback(cb.id, 'Projekt nicht gefunden.'); return; }
 
   if (action === 'pick') {
-    // Commit the held idea into the chosen project and make it active.
-    if (link.pending_idea) await captureIdea(link.owner_id, link.pending_idea, projectId);
-    await setActiveProject(link.owner_id, projectId);
-    await setPendingIdea(link.owner_id, null);
-    await tgAnswerCallback(cb.id, `Gespeichert in ${name}`);
-    await tgEditText(chatId, messageId, `💡 Gespeichert in *${md(name)}*.\n_Aktives Projekt ist jetzt ${md(name)} — weitere Ideen landen dort._`);
+    if (link.pending_idea) {
+      const colonIndex = link.pending_idea.indexOf(':');
+      let type = 'idea';
+      let text = link.pending_idea;
+      
+      if (colonIndex !== -1) {
+        const potentialType = link.pending_idea.slice(0, colonIndex);
+        if (potentialType === 'idea' || potentialType === 'document') {
+          type = potentialType;
+          text = link.pending_idea.slice(colonIndex + 1);
+        }
+      }
+
+      await setActiveProject(link.owner_id, projectId);
+      await setPendingIdea(link.owner_id, null);
+
+      if (type === 'document') {
+        const docTitle = await generateTitle(text);
+        const docId = await captureDocument(link.owner_id, docTitle, text, projectId);
+        await tgAnswerCallback(cb.id, `Dokument gespeichert in ${name}`);
+        await tgEditText(chatId, messageId, `📄 Dokument gespeichert in *${md(name)}*.\n_Titel: "${md(docTitle)}"_\n\n_Aktives Projekt ist jetzt ${md(name)}._`, {
+          inline_keyboard: [
+            [
+              { text: '💡 In Idee umwandeln', callback_data: `toidea:${docId}:${projectId}` },
+              { text: '📂 Anderes Projekt', callback_data: 'change' }
+            ]
+          ]
+        });
+      } else {
+        const ideaId = await captureIdea(link.owner_id, text, projectId);
+        await tgAnswerCallback(cb.id, `Idee gespeichert in ${name}`);
+        await tgEditText(chatId, messageId, `💡 Idee gespeichert in *${md(name)}*.\n\n_Aktives Projekt ist jetzt ${md(name)}._`, {
+          inline_keyboard: [
+            [
+              { text: '📄 In Dokument umwandeln', callback_data: `todoc:${ideaId}:${projectId}` },
+              { text: '📂 Anderes Projekt', callback_data: 'change' }
+            ]
+          ]
+        });
+      }
+    } else {
+      await tgAnswerCallback(cb.id);
+    }
     return;
   }
 
   if (action === 'setactive') {
     await setActiveProject(link.owner_id, projectId);
     await tgAnswerCallback(cb.id, `Aktiv: ${name}`);
-    await tgEditText(chatId, messageId, `📂 Aktives Projekt: *${md(name)}*\n_Neue Ideen landen ab jetzt hier._`);
+    await tgEditText(chatId, messageId, `📂 Aktives Projekt: *${md(name)}*\n_Neue Ideen/Dokumente landen ab jetzt hier._`);
     return;
   }
 
