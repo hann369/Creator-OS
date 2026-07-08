@@ -1104,3 +1104,296 @@ test('Telegram Journal Command (B5)', async () => {
     globalThis.fetch = originalFetch;
   }
 });
+
+test('Telegram Propose Card (B6)', async () => {
+  const insertedCards: any[] = [];
+  const sentMessages: any[] = [];
+
+  supabaseAdmin.from = (table: string): any => {
+    if (table === 'processed_telegram_updates') {
+      return {
+        select: () => ({
+          eq: (col: string, val: any) => ({
+            maybeSingle: async () => {
+              return { data: null, error: null };
+            }
+          })
+        }),
+        insert: async (row: any) => {
+          return { error: null };
+        }
+      };
+    }
+
+    if (table === 'telegram_links') {
+      return {
+        select: () => ({
+          eq: () => ({
+            maybeSingle: async () => {
+              return { data: { owner_id: 'test-user', linked_at: new Date().toISOString(), active_project_id: 'main-space' }, error: null };
+            }
+          })
+        })
+      };
+    }
+
+    if (table === 'projects') {
+      return {
+        select: () => ({
+          eq: () => ({
+            order: async () => {
+              return { data: [{ id: 'main-space', name: 'Main Space' }], error: null };
+            }
+          })
+        })
+      };
+    }
+
+    if (table === 'pipeline_cards') {
+      return {
+        insert: async (row: any) => {
+          insertedCards.push(row);
+          return { error: null };
+        }
+      };
+    }
+
+    return originalFrom.call(supabaseAdmin, table);
+  };
+
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (url: any, options?: any) => {
+    const urlStr = url.toString();
+    if (urlStr.includes('/chat/completions')) {
+      return new Response(JSON.stringify({
+        choices: [{ message: { content: '{"title":"Pro SEO Video","hook":"The ultimate guide.","format":"longform"}' } }]
+      }));
+    }
+    if (urlStr.includes('/sendMessage')) {
+      const body = JSON.parse(options.body);
+      sentMessages.push(body);
+      return new Response(JSON.stringify({ ok: true }));
+    }
+    return originalFetch(url, options);
+  };
+
+  try {
+    const res = await fetch(`http://localhost:${port}/api/v1/telegram/webhook`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-telegram-bot-api-secret-token': testSecret
+      },
+      body: JSON.stringify({
+        update_id: 12001,
+        message: {
+          chat: { id: 123 },
+          from: { id: 123, username: 'tester' },
+          text: '/propose SEO Tricks'
+        }
+      })
+    });
+
+    assert.equal(res.status, 200);
+    const data: any = await res.json();
+    assert.equal(data.ok, true);
+
+    // Verify card was inserted
+    assert.equal(insertedCards.length, 1);
+    assert.equal(insertedCards[0].title, 'Pro SEO Video');
+    assert.equal(insertedCards[0].hook, 'The ultimate guide.');
+    assert.equal(insertedCards[0].status, 'idea');
+
+    // Verify Telegram proposals sent
+    assert.ok(sentMessages.some(m => m.text.includes('Generiere Vorschlag')));
+    assert.ok(sentMessages.some(m => m.text.includes('Proposed Card') || (m.text.includes('Pro SEO Video') && m.text.includes('Freigabe erteilen?'))));
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('Telegram Approve Card Callback (B6)', async () => {
+  let answerCallbackText = '';
+  let editedMessageText = '';
+
+  supabaseAdmin.from = (table: string): any => {
+    if (table === 'telegram_links') {
+      return {
+        select: () => ({
+          eq: () => ({
+            maybeSingle: async () => {
+              return { data: { owner_id: 'test-user', linked_at: new Date().toISOString() }, error: null };
+            }
+          })
+        })
+      };
+    }
+
+    if (table === 'projects') {
+      return {
+        select: () => ({
+          eq: () => ({
+            order: async () => {
+              return { data: [{ id: 'main-space', name: 'Main Space' }], error: null };
+            }
+          })
+        })
+      };
+    }
+
+    if (table === 'pipeline_cards') {
+      return {
+        select: () => ({
+          eq: () => ({
+            maybeSingle: async () => {
+              return { data: { title: 'My Awesome Card' }, error: null };
+            }
+          })
+        })
+      };
+    }
+
+    return originalFrom.call(supabaseAdmin, table);
+  };
+
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (url: any, options?: any) => {
+    const urlStr = url.toString();
+    if (urlStr.includes('/answerCallbackQuery')) {
+      const body = JSON.parse(options.body);
+      answerCallbackText = body.text;
+      return new Response(JSON.stringify({ ok: true }));
+    }
+    if (urlStr.includes('/editMessageText')) {
+      const body = JSON.parse(options.body);
+      editedMessageText = body.text;
+      return new Response(JSON.stringify({ ok: true }));
+    }
+    return originalFetch(url, options);
+  };
+
+  try {
+    const res = await fetch(`http://localhost:${port}/api/v1/telegram/webhook`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-telegram-bot-api-secret-token': testSecret
+      },
+      body: JSON.stringify({
+        update_id: 13001,
+        callback_query: {
+          id: 'cb-999',
+          from: { id: 123 },
+          message: {
+            message_id: 888,
+            chat: { id: 123 }
+          },
+          data: 'apprv:card-1234:main-space'
+        }
+      })
+    });
+
+    assert.equal(res.status, 200);
+    assert.equal(answerCallbackText, 'Karte freigegeben');
+    assert.ok(editedMessageText.includes('wurde freigegeben') && editedMessageText.includes('My Awesome Card'));
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('Telegram Edit Card Title (B6)', async () => {
+  let updatedCardId = '';
+  let updatedTitle = '';
+
+  supabaseAdmin.from = (table: string): any => {
+    if (table === 'processed_telegram_updates') {
+      return {
+        select: () => ({
+          eq: (col: string, val: any) => ({
+            maybeSingle: async () => {
+              return { data: null, error: null };
+            }
+          })
+        }),
+        insert: async (row: any) => {
+          return { error: null };
+        }
+      };
+    }
+
+    if (table === 'telegram_links') {
+      return {
+        select: () => ({
+          eq: () => ({
+            maybeSingle: async () => {
+              return { data: { owner_id: 'test-user', linked_at: new Date().toISOString(), pending_idea: 'editcard:card-1234' }, error: null };
+            }
+          })
+        }),
+        update: (payload: any) => ({
+          eq: async (col: string, val: any) => {
+            return { error: null };
+          }
+        })
+      };
+    }
+
+    if (table === 'pipeline_cards') {
+      return {
+        select: () => ({
+          eq: () => ({
+            maybeSingle: async () => {
+              return { data: { title: 'Old Title', hook: 'The Hook', format: 'short' }, error: null };
+            }
+          })
+        }),
+        update: (payload: any) => ({
+          eq: async (col: string, val: any) => {
+            updatedCardId = val;
+            updatedTitle = payload.title;
+            return { error: null };
+          }
+        })
+      };
+    }
+
+    return originalFrom.call(supabaseAdmin, table);
+  };
+
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (url: any, options?: any) => {
+    const urlStr = url.toString();
+    if (urlStr.includes('/sendMessage')) {
+      return new Response(JSON.stringify({ ok: true }));
+    }
+    return originalFetch(url, options);
+  };
+
+  try {
+    const res = await fetch(`http://localhost:${port}/api/v1/telegram/webhook`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-telegram-bot-api-secret-token': testSecret
+      },
+      body: JSON.stringify({
+        update_id: 14001,
+        message: {
+          chat: { id: 123 },
+          from: { id: 123, username: 'tester' },
+          text: 'New Brilliant Title'
+        }
+      })
+    });
+
+    assert.equal(res.status, 200);
+    const data: any = await res.json();
+    assert.equal(data.ok, true);
+
+    // Verify pipeline card was updated in database
+    assert.equal(updatedCardId, 'card-1234');
+    assert.equal(updatedTitle, 'New Brilliant Title');
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});

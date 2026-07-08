@@ -430,6 +430,65 @@ Erstelle das JSON-Objekt.`;
   }
 }
 
+async function handleProposeCard(link: Link, chatId: number, topic: string): Promise<void> {
+  await tgSend(chatId, `🤖 _Generiere Vorschlag für neue Pipeline-Karte zu "${md(topic)}"..._`);
+
+  const systemPrompt = 'Du bist ein kreativer Content-Strategist. Generiere einen Vorschlag für ein Video. Antworte mit einem JSON-Objekt mit genau drei Feldern: "title" (kurz, maximal 6 Worte), "hook" (ein spannender erster Satz) und "format" (Auswahl aus: "longform", "short", "thread", "newsletter").';
+  const userPrompt = `Thema: ${topic}
+Erstelle das JSON-Objekt.`;
+
+  const jsonString = await askMistral(userPrompt, systemPrompt);
+  let title = 'Vorschlag: ' + topic;
+  let hook = '';
+  let format = 'longform';
+
+  if (jsonString) {
+    try {
+      const parsed = JSON.parse(jsonString);
+      if (parsed.title) title = parsed.title.trim();
+      if (parsed.hook) hook = parsed.hook.trim();
+      if (parsed.format) format = parsed.format.trim();
+    } catch {
+      console.warn('[telegram] Failed to parse proposed card JSON');
+    }
+  }
+
+  const cardId = `card-${crypto.randomUUID().slice(0, 8)}`;
+  const projectId = link.active_project_id ?? DEFAULT_WORKSPACE;
+
+  const { error } = await supabaseAdmin.from('pipeline_cards').insert({
+    id: cardId,
+    workspace_id: projectId,
+    title: title.slice(0, 200),
+    hook: hook.slice(0, 500),
+    format,
+    status: 'idea',
+    platforms: ['youtube'],
+    trend_score: 5.0,
+    executive_priority: 5.0,
+    markdown: '',
+    checklists: [],
+    attachments: [],
+    comments: []
+  });
+
+  if (error) {
+    console.error('[telegram] Failed to insert proposed card:', error.message);
+    await tgSend(chatId, '❌ Fehler beim Erstellen des Vorschlags.');
+    return;
+  }
+
+  await tgSend(chatId, `📝 *Vorschlag für neue Pipeline-Karte:*\n\n*Titel:* ${md(title)}\n*Hook:* _"${md(hook)}"_\n*Format:* ${md(format)}\n\nFreigabe erteilen?`, {
+    inline_keyboard: [
+      [
+        { text: '✅ Freigeben', callback_data: `apprv:${cardId}` },
+        { text: '✏️ Titel ändern', callback_data: `editcd:${cardId}` },
+        { text: '❌ Löschen', callback_data: `rejct:${cardId}` }
+      ]
+    ]
+  });
+}
+
 async function analyzeImageWithMistral(imageBuffer: Buffer, mimeType: string, prompt: string): Promise<string> {
   const mistralKey = process.env.MISTRAL_API_KEY;
   if (!mistralKey) return '';
@@ -688,6 +747,37 @@ async function processUpdate(update: any): Promise<void> {
       return;
     }
 
+    if (link.pending_idea && link.pending_idea.startsWith('editcard:')) {
+      const cardId = link.pending_idea.replace('editcard:', '');
+      const newTitle = trimmed;
+
+      const { data: card, error: fetchErr } = await supabaseAdmin
+        .from('pipeline_cards')
+        .select('title, hook, format')
+        .eq('id', cardId)
+        .maybeSingle();
+
+      if (fetchErr || !card) {
+        await tgSend(chatId, '❌ Karte konnte nicht gefunden werden.');
+        await setPendingIdea(link.owner_id, null);
+        return;
+      }
+
+      await supabaseAdmin.from('pipeline_cards').update({ title: newTitle }).eq('id', cardId);
+      await setPendingIdea(link.owner_id, null);
+
+      await tgSend(chatId, `✅ Titel aktualisiert!\n\n*Titel:* ${md(newTitle)}\n*Hook:* _"${md(card.hook)}"_\n*Format:* ${md(card.format)}\n\nFreigabe erteilen?`, {
+        inline_keyboard: [
+          [
+            { text: '✅ Freigeben', callback_data: `apprv:${cardId}` },
+            { text: '✏️ Titel ändern', callback_data: `editcd:${cardId}` },
+            { text: '❌ Löschen', callback_data: `rejct:${cardId}` }
+          ]
+        ]
+      });
+      return;
+    }
+
     if (photo && photo.length > 0) {
       const bestPhoto = photo[photo.length - 1];
       await handleMediaIngestion(link, chatId, {
@@ -756,6 +846,17 @@ async function processUpdate(update: any): Promise<void> {
       await tgSend(chatId, `📂 Aktives Projekt${active ? `: *${md(active)}*` : ' — noch keins gewählt'}.\n\nWähle dein aktives Projekt:`, projectKeyboard(projects, 'setactive'));
       return;
     }
+    if (trimmed.toLowerCase().startsWith('/propose ')) {
+      const parts = trimmed.split(/\s+/);
+      const topic = parts.slice(1).join(' ').trim();
+      if (!topic) {
+        await tgSend(chatId, 'Nutzung: `/propose [Thema]`');
+        return;
+      }
+      await handleProposeCard(link, chatId, topic);
+      return;
+    }
+
     if (trimmed.toLowerCase().startsWith('/journal ') || trimmed.toLowerCase().startsWith('/reflection ')) {
       const parts = trimmed.split(/\s+/);
       const textToRoute = parts.slice(1).join(' ').trim();
@@ -954,6 +1055,46 @@ async function processCallback(cb: any): Promise<void> {
         ]
       ]
     });
+    return;
+  }
+
+  if (action === 'apprv') {
+    const cardId = projectId;
+    const { data: card, error: fetchErr } = await supabaseAdmin
+      .from('pipeline_cards')
+      .select('title')
+      .eq('id', cardId)
+      .maybeSingle();
+
+    if (fetchErr || !card) {
+      await tgAnswerCallback(cb.id, 'Karte nicht gefunden.');
+      return;
+    }
+
+    await tgAnswerCallback(cb.id, 'Karte freigegeben');
+    await tgEditText(chatId, messageId, `✅ Pipeline-Karte *${md(card.title)}* wurde freigegeben und auf dein Board gesetzt!`);
+    return;
+  }
+
+  if (action === 'rejct') {
+    const cardId = projectId;
+    const { data: card } = await supabaseAdmin
+      .from('pipeline_cards')
+      .select('title')
+      .eq('id', cardId)
+      .maybeSingle();
+
+    await supabaseAdmin.from('pipeline_cards').delete().eq('id', cardId);
+    await tgAnswerCallback(cb.id, 'Karte gelöscht');
+    await tgEditText(chatId, messageId, `❌ Vorschlag${card ? ` *${md(card.title)}*` : ''} wurde gelöscht.`);
+    return;
+  }
+
+  if (action === 'editcd') {
+    const cardId = projectId;
+    await setPendingIdea(link.owner_id, `editcard:${cardId}`);
+    await tgAnswerCallback(cb.id);
+    await tgSend(chatId, `✏️ Bitte antworte auf diese Nachricht mit dem neuen Titel für die Karte.`);
     return;
   }
 
