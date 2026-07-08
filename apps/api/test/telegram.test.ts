@@ -17,6 +17,7 @@ before(async () => {
   process.env.SUPABASE_ANON_KEY = 'mock-anon-key';
   process.env.TELEGRAM_WEBHOOK_SECRET = testSecret;
   process.env.TELEGRAM_BOT_TOKEN = '123456:mock-token';
+  process.env.MISTRAL_API_KEY = 'mock-mistral-key';
 
   const supabaseMod = await import('../dist/supabase.js');
   const telegramMod = await import('../dist/controllers/telegram.js');
@@ -156,4 +157,125 @@ test('Telegram Webhook Idempotency (A3)', async () => {
   assert.equal(data2.ignored, true);
   // Ensure no duplicate idea was inserted
   assert.equal(insertedIdeas.length, 1);
+});
+
+test('Telegram Voice Memo Transcription (B1)', async () => {
+  const processedUpdates = new Set<number>();
+  const insertedIdeas: any[] = [];
+  const sentMessages: any[] = [];
+
+  // Mock supabaseAdmin.from
+  supabaseAdmin.from = (table: string): any => {
+    if (table === 'processed_telegram_updates') {
+      return {
+        select: () => ({
+          eq: (col: string, val: any) => ({
+            maybeSingle: async () => {
+              return { data: null, error: null };
+            }
+          })
+        }),
+        insert: async (row: any) => {
+          processedUpdates.add(row.update_id);
+          return { error: null };
+        }
+      };
+    }
+
+    if (table === 'telegram_links') {
+      return {
+        select: () => ({
+          eq: () => ({
+            maybeSingle: async () => {
+              return { data: { owner_id: 'test-user', linked_at: new Date().toISOString() }, error: null };
+            }
+          })
+        }),
+        update: () => ({
+          eq: async () => {
+            return { error: null };
+          }
+        })
+      };
+    }
+
+    if (table === 'projects') {
+      return {
+        select: () => ({
+          eq: () => ({
+            order: async () => {
+              return { data: [{ id: 'main-space', name: 'Main Space' }], error: null };
+            }
+          })
+        })
+      };
+    }
+
+    if (table === 'ideas') {
+      return {
+        insert: async (row: any) => {
+          insertedIdeas.push(row);
+          return { error: null };
+        }
+      };
+    }
+
+    return originalFrom.call(supabaseAdmin, table);
+  };
+
+  // Mock globalThis.fetch
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (url: any, options?: any) => {
+    const urlStr = url.toString();
+    if (urlStr.includes('/getFile')) {
+      return new Response(JSON.stringify({ ok: true, result: { file_path: 'voice_file.ogg' } }));
+    }
+    if (urlStr.includes('/file/bot')) {
+      return new Response(new Uint8Array([1, 2, 3]));
+    }
+    if (urlStr.includes('/audio/transcriptions')) {
+      return new Response(JSON.stringify({ text: 'This is my transcribed voice idea!' }));
+    }
+    if (urlStr.includes('/sendMessage')) {
+      const body = JSON.parse(options.body);
+      sentMessages.push(body);
+      return new Response(JSON.stringify({ ok: true }));
+    }
+    return originalFetch(url, options);
+  };
+
+  try {
+    const res = await fetch(`http://localhost:${port}/api/v1/telegram/webhook`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-telegram-bot-api-secret-token': testSecret
+      },
+      body: JSON.stringify({
+        update_id: 5001,
+        message: {
+          chat: { id: 123 },
+          from: { id: 123, username: 'tester' },
+          voice: {
+            file_id: 'voice-file-id-123',
+            mime_type: 'audio/ogg'
+          }
+        }
+      })
+    });
+
+    assert.equal(res.status, 200);
+    const data: any = await res.json();
+    assert.equal(data.ok, true);
+
+    // Assert idea was inserted with the transcribed text
+    assert.equal(insertedIdeas.length, 1);
+    assert.equal(insertedIdeas[0].title, 'This is my transcribed voice idea!');
+    
+    // Assert status and transcript messages were sent back to user
+    assert.ok(sentMessages.some(m => m.text.includes('Transkribiere')));
+    assert.ok(sentMessages.some(m => m.text.includes('Transkript') && m.text.includes('This is my transcribed voice idea!')));
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });

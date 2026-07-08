@@ -66,6 +66,64 @@ function md(s: string): string {
   return s.replace(/([_*\[\]`])/g, '\\$1');
 }
 
+async function getTelegramFilePath(fileId: string): Promise<string | null> {
+  const token = BOT_TOKEN();
+  if (!token) return null;
+  try {
+    const res = await fetch(`https://api.telegram.org/bot${token}/getFile?file_id=${fileId}`);
+    if (!res.ok) return null;
+    const data: any = await res.json();
+    return data.result?.file_path ?? null;
+  } catch (err) {
+    console.error('[telegram] getFile failed:', (err as Error).message);
+    return null;
+  }
+}
+
+async function transcribeAudio(filePath: string): Promise<string | null> {
+  const token = BOT_TOKEN();
+  const mistralKey = process.env.MISTRAL_API_KEY;
+  if (!token || !mistralKey) {
+    console.warn('[telegram] Cannot transcribe audio: BOT_TOKEN or MISTRAL_API_KEY unset');
+    return null;
+  }
+
+  try {
+    const fileUrl = `https://api.telegram.org/file/bot${token}/${filePath}`;
+    const fileRes = await fetch(fileUrl);
+    if (!fileRes.ok) {
+      console.error(`[telegram] Failed to download audio from Telegram: ${fileRes.status}`);
+      return null;
+    }
+    const arrayBuffer = await fileRes.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
+
+    const formData = new FormData();
+    const blob = new Blob([buffer], { type: 'audio/ogg' });
+    formData.append('file', blob, 'voice.ogg');
+    formData.append('model', 'voxtral-mini-transcribe-latest');
+
+    const mistralRes = await fetch('https://api.mistral.ai/v1/audio/transcriptions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${mistralKey}`
+      },
+      body: formData
+    });
+
+    if (!mistralRes.ok) {
+      console.error(`[telegram] Mistral transcription failed: ${mistralRes.status} - ${await mistralRes.text()}`);
+      return null;
+    }
+
+    const data: any = await mistralRes.json();
+    return data.text ?? null;
+  } catch (err) {
+    console.error('[telegram] transcribeAudio error:', (err as Error).message);
+    return null;
+  }
+}
+
 function projectKeyboard(projects: Array<{ id: string; name: string }>, action: 'pick' | 'setactive'): InlineKeyboard {
   return { inline_keyboard: projects.slice(0, 12).map(p => [{ text: p.name, callback_data: `${action}:${p.id}` }]) };
 }
@@ -181,12 +239,13 @@ telegramRouter.post('/webhook', async (req: Request, res: Response) => {
 async function processUpdate(update: any): Promise<void> {
   const msg = update?.message ?? update?.edited_message;
   const text: string | undefined = msg?.text;
+  const voice = msg?.voice ?? msg?.audio;
   const chatId: number | undefined = msg?.chat?.id;
   const fromId: number | undefined = msg?.from?.id;
   const username: string | undefined = msg?.from?.username;
-  if (!text || chatId === undefined || fromId === undefined) return;
+  if ((!text && !voice?.file_id) || chatId === undefined || fromId === undefined) return;
 
-  const trimmed = text.trim();
+  const trimmed = text ? text.trim() : '';
   try {
     // ── Command router (extensible; non-commands are captured as ideas) ──
     if (trimmed === '/start') {
@@ -214,8 +273,30 @@ async function processUpdate(update: any): Promise<void> {
       return;
     }
 
+    let processedText = trimmed;
+    if (voice?.file_id) {
+      await tgSend(chatId, '🎙️ _Transkribiere Sprachnachricht..._');
+      const filePath = await getTelegramFilePath(voice.file_id);
+      if (!filePath) {
+        await tgSend(chatId, '❌ Sprachnachricht konnte nicht geladen werden.');
+        return;
+      }
+      const transcription = await transcribeAudio(filePath);
+      if (!transcription) {
+        await tgSend(chatId, '❌ Transkription fehlgeschlagen.');
+        return;
+      }
+      processedText = transcription.trim();
+      await tgSend(chatId, `📝 _Transkript:_\n"${processedText}"`);
+    }
+
+    if (!processedText) {
+      await tgSend(chatId, '❌ Keine verwertbare Textnachricht oder Transkription gefunden.');
+      return;
+    }
+
     // ── Default: capture as an idea, routed to a project ──
-    await routeIdea(link, { chatId, text: trimmed });
+    await routeIdea(link, { chatId, text: processedText });
   } catch (err) {
     console.error('[telegram] processUpdate error:', (err as Error).message);
     await tgSend(chatId, 'Kurzer Fehler beim Speichern — bitte nochmal versuchen.');
