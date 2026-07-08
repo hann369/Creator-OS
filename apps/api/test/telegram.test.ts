@@ -631,3 +631,126 @@ test('Telegram Toggle Idea to Document Callback (B2 extension)', async () => {
     globalThis.fetch = originalFetch;
   }
 });
+
+test('Telegram URL Ingestion (B3)', async () => {
+  const insertedIdeas: any[] = [];
+  const sentMessages: any[] = [];
+
+  supabaseAdmin.from = (table: string): any => {
+    if (table === 'processed_telegram_updates') {
+      return {
+        select: () => ({
+          eq: (col: string, val: any) => ({
+            maybeSingle: async () => {
+              return { data: null, error: null };
+            }
+          })
+        }),
+        insert: async (row: any) => {
+          return { error: null };
+        }
+      };
+    }
+
+    if (table === 'telegram_links') {
+      return {
+        select: () => ({
+          eq: () => ({
+            maybeSingle: async () => {
+              return { data: { owner_id: 'test-user', linked_at: new Date().toISOString(), active_project_id: 'main-space' }, error: null };
+            }
+          })
+        })
+      };
+    }
+
+    if (table === 'projects') {
+      return {
+        select: () => ({
+          eq: () => ({
+            order: async () => {
+              return { data: [{ id: 'main-space', name: 'Main Space' }], error: null };
+            }
+          })
+        })
+      };
+    }
+
+    if (table === 'ideas') {
+      return {
+        insert: async (row: any) => {
+          insertedIdeas.push(row);
+          return { error: null };
+        }
+      };
+    }
+
+    return originalFrom.call(supabaseAdmin, table);
+  };
+
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (url: any, options?: any) => {
+    const urlStr = url.toString();
+    
+    // Scraper fetch mock
+    if (urlStr.includes('nextjs.org')) {
+      return new Response(`
+        <html>
+          <head>
+            <title>Next.js by Vercel</title>
+            <meta name="description" content="The React Framework for the Web">
+          </head>
+          <body>Hello</body>
+        </html>
+      `);
+    }
+
+    if (urlStr.includes('/chat/completions')) {
+      return new Response(JSON.stringify({
+        choices: [{ message: { content: '{"title":"Next.js React Framework","summary":"Next.js is a React framework by Vercel."}' } }]
+      }));
+    }
+
+    if (urlStr.includes('/sendMessage')) {
+      const body = JSON.parse(options.body);
+      sentMessages.push(body);
+      return new Response(JSON.stringify({ ok: true }));
+    }
+
+    return originalFetch(url, options);
+  };
+
+  try {
+    const res = await fetch(`http://localhost:${port}/api/v1/telegram/webhook`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-telegram-bot-api-secret-token': testSecret
+      },
+      body: JSON.stringify({
+        update_id: 9001,
+        message: {
+          chat: { id: 123 },
+          from: { id: 123, username: 'tester' },
+          text: 'Schau dir mal https://nextjs.org an'
+        }
+      })
+    });
+
+    assert.equal(res.status, 200);
+    const data: any = await res.json();
+    assert.equal(data.ok, true);
+
+    // Assert idea was created from URL
+    assert.equal(insertedIdeas.length, 1);
+    assert.equal(insertedIdeas[0].title, 'Next.js React Framework');
+    assert.equal(insertedIdeas[0].inspiration_url, 'https://nextjs.org');
+    assert.equal(insertedIdeas[0].pain_points, 'Next.js is a React framework by Vercel.');
+    
+    // Assert confirmation was sent with source link
+    assert.ok(sentMessages.some(m => m.text.includes('Lese Website')));
+    assert.ok(sentMessages.some(m => m.text.includes('Next.js React Framework') && m.text.includes('https://nextjs.org')));
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});

@@ -313,6 +313,123 @@ async function generateTitle(text: string): Promise<string> {
   return title ? title.trim() : (text.length > 50 ? text.slice(0, 47) + '...' : text);
 }
 
+async function fetchWithTimeout(url: string, timeoutMs = 5000): Promise<globalThis.Response> {
+  const controller = new AbortController();
+  const id = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, {
+      signal: controller.signal,
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+      }
+    });
+  } finally {
+    clearTimeout(id);
+  }
+}
+
+function extractMetaDescription(html: string): string {
+  const metaRegex = /<meta[^>]*?(?:name|property)=["'](?:description|og:description)["'][^>]*?content=["']([\s\S]*?)["']/i;
+  const match = html.match(metaRegex);
+  if (match) return match[1].trim();
+
+  const metaRegex2 = /<meta[^>]*?content=["']([\s\S]*?)["'][^>]*?(?:name|property)=["'](?:description|og:description)["']/i;
+  const match2 = html.match(metaRegex2);
+  return match2 ? match2[1].trim() : '';
+}
+
+function cleanHtmlText(html: string): string {
+  return html
+    .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+    .replace(/<[^>]*>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+async function handleUrlIngestion(link: Link, chatId: number, url: string, rawText: string): Promise<void> {
+  await tgSend(chatId, `🌐 _Lese Website "${md(url)}" ein..._`);
+
+  try {
+    const res = await fetchWithTimeout(url);
+    if (!res.ok) {
+      await tgSend(chatId, `❌ Fehler beim Abruf der Seite (HTTP ${res.status}).`);
+      return;
+    }
+
+    const html = await res.text();
+    const titleMatch = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
+    let pageTitle = titleMatch ? titleMatch[1].trim() : '';
+    
+    pageTitle = pageTitle
+      .replace(/&amp;/g, '&')
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/&quot;/g, '"')
+      .replace(/&#39;/g, "'");
+
+    const metaDesc = extractMetaDescription(html);
+    const bodyText = cleanHtmlText(html);
+
+    const systemPrompt = 'Du bist ein Assistent, der Webseiteninhalte analysiert. Deine Aufgabe ist es, den bereitgestellten Webseiten-Auszug kurz zusammenzufassen und einen passenden Titel auf Deutsch zu generieren. Antworte mit einem JSON-Objekt mit genau zwei Feldern: "title" (3-6 Worte) und "summary" (2-3 Sätze).';
+    const userPrompt = `Webseite URL: ${url}
+HTML Titel: ${pageTitle}
+Meta Beschreibung: ${metaDesc}
+Textauszug (bereinigt): ${bodyText.slice(0, 1500)}
+
+Erstelle das JSON-Objekt.`;
+
+    const jsonString = await askMistral(userPrompt, systemPrompt);
+    let title = pageTitle || 'Webseite Notiz';
+    let summary = metaDesc || 'Keine Zusammenfassung verfügbar.';
+
+    if (jsonString) {
+      try {
+        const parsed = JSON.parse(jsonString);
+        if (parsed.title) title = parsed.title.trim();
+        if (parsed.summary) summary = parsed.summary.trim();
+      } catch {
+        console.warn('[telegram] Failed to parse Mistral JSON for URL ingestion');
+      }
+    }
+
+    const now = new Date().toISOString();
+    const ideaId = `idea-${crypto.randomUUID().slice(0, 8)}`;
+    const projectId = link.active_project_id;
+    const projects = await getProjects(link.owner_id);
+    const projName = projectName(projects, projectId) ?? 'Main Space';
+
+    const { error } = await supabaseAdmin.from('ideas').insert({
+      id: ideaId,
+      workspace_id: projectId ?? DEFAULT_WORKSPACE,
+      owner_id: link.owner_id,
+      project_id: projectId,
+      title: title.slice(0, 500),
+      inspiration_url: url,
+      pain_points: summary.slice(0, 1000),
+      status: 'Idea',
+      rating: 0,
+      archived: false,
+      created_at: now,
+      updated_at: now,
+    });
+
+    if (error) throw error;
+
+    await tgSend(chatId, `💡 Idee gespeichert in *${md(projName)}*.\n\n*${md(title)}*\n_${md(summary)}_\n\n🔗 [Quelle](${url})`, {
+      inline_keyboard: [
+        [
+          { text: '📄 In Dokument umwandeln', callback_data: `todoc:${ideaId}:${projectId}` },
+          { text: '📂 Anderes Projekt', callback_data: 'change' }
+        ]
+      ],
+    });
+  } catch (err) {
+    console.error('[telegram] handleUrlIngestion error:', (err as Error).message);
+    await tgSend(chatId, '❌ Fehler beim Verarbeiten der URL.');
+  }
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Webhook — Telegram delivers updates here.
 // ─────────────────────────────────────────────────────────────────────────────
@@ -391,6 +508,14 @@ async function processUpdate(update: any): Promise<void> {
     const link = await getLink(fromId);
     if (!link?.linked_at) {
       await tgSend(chatId, 'Noch nicht verbunden. Öffne die App → *Einstellungen* → *Connect Telegram* und sende mir `/link DEIN-CODE`.');
+      return;
+    }
+
+    const urlRegex = /(https?:\/\/[^\s]+)/gi;
+    const urlMatch = trimmed.match(urlRegex);
+    if (urlMatch && !trimmed.startsWith('/')) {
+      const url = urlMatch[0];
+      await handleUrlIngestion(link, chatId, url, trimmed);
       return;
     }
 
@@ -577,7 +702,7 @@ async function processCallback(cb: any): Promise<void> {
 
     const { data: idea, error: fetchErr } = await supabaseAdmin
       .from('ideas')
-      .select('title')
+      .select('title, pain_points, inspiration_url')
       .eq('id', ideaId)
       .maybeSingle();
 
@@ -587,8 +712,13 @@ async function processCallback(cb: any): Promise<void> {
     }
 
     await supabaseAdmin.from('ideas').delete().eq('id', ideaId);
-    const docTitle = await generateTitle(idea.title);
-    const docId = await captureDocument(link.owner_id, docTitle, idea.title, pId);
+    
+    const docTitle = idea.inspiration_url ? idea.title : await generateTitle(idea.title);
+    const docBody = idea.inspiration_url 
+      ? `${idea.pain_points || ''}\n\n🔗 [Quelle](${idea.inspiration_url})` 
+      : idea.title;
+
+    const docId = await captureDocument(link.owner_id, docTitle, docBody, pId);
 
     await tgAnswerCallback(cb.id, 'In Dokument umgewandelt');
     await tgEditText(chatId, messageId, `📄 Dokument gespeichert in *${md(pName)}*.\n_Titel: "${md(docTitle)}"_`, {
