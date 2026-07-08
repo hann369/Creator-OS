@@ -124,6 +124,116 @@ async function transcribeAudio(filePath: string): Promise<string | null> {
   }
 }
 
+async function askMistral(prompt: string, systemPrompt?: string): Promise<string> {
+  const mistralKey = process.env.MISTRAL_API_KEY;
+  if (!mistralKey) return '';
+  try {
+    const res = await fetch('https://api.mistral.ai/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${mistralKey}`
+      },
+      body: JSON.stringify({
+        model: 'mistral-small-latest',
+        messages: [
+          { role: 'system', content: systemPrompt ?? 'You are a helpful assistant.' },
+          { role: 'user', content: prompt }
+        ]
+      })
+    });
+    if (!res.ok) return '';
+    const data: any = await res.json();
+    return data.choices?.[0]?.message?.content ?? '';
+  } catch (err) {
+    console.error('[telegram] askMistral failed:', (err as Error).message);
+    return '';
+  }
+}
+
+async function handleRecall(link: Link, chatId: number, query: string): Promise<void> {
+  await tgSend(chatId, `🔍 _Suche in deinem Gehirn nach "${md(query)}"..._`);
+
+  try {
+    // 1. Query ideas
+    const { data: ideas, error: ideasErr } = await supabaseAdmin
+      .from('ideas')
+      .select('title, pain_points, packaging_questions')
+      .eq('owner_id', link.owner_id)
+      .or(`title.ilike.%${query}%,pain_points.ilike.%${query}%,packaging_questions.ilike.%${query}%`)
+      .limit(10);
+
+    if (ideasErr) console.warn('[telegram] recall ideas query error:', ideasErr.message);
+
+    // 2. Query documents
+    const { data: documents, error: docsErr } = await supabaseAdmin
+      .from('documents')
+      .select('title, body')
+      .eq('owner_id', link.owner_id)
+      .or(`title.ilike.%${query}%,body.ilike.%${query}%`)
+      .limit(5);
+
+    if (docsErr) console.warn('[telegram] recall docs query error:', docsErr.message);
+
+    const hasIdeas = ideas && ideas.length > 0;
+    const hasDocs = documents && documents.length > 0;
+
+    if (!hasIdeas && !hasDocs) {
+      await tgSend(chatId, `Ich konnte in deinen Ideen und Dokumenten leider nichts zu *${md(query)}* finden.`);
+      return;
+    }
+
+    // 3. Format context for Mistral
+    let context = '';
+    const sources: string[] = [];
+
+    if (hasIdeas) {
+      context += `--- IDEEN ---\n`;
+      for (const idea of ideas!) {
+        context += `- Titel: ${idea.title}\n`;
+        if (idea.pain_points) context += `  Pain Points: ${idea.pain_points}\n`;
+        if (idea.packaging_questions) context += `  Fragen: ${idea.packaging_questions}\n`;
+        sources.push(`💡 Idee: *${md(idea.title)}*`);
+      }
+    }
+
+    if (hasDocs) {
+      context += `\n--- DOKUMENTE ---\n`;
+      for (const doc of documents!) {
+        context += `- Titel: ${doc.title}\n`;
+        if (doc.body) context += `  Inhalt: ${doc.body.slice(0, 500)}\n`;
+        sources.push(`📄 Dokument: *${md(doc.title)}*`);
+      }
+    }
+
+    // 4. Call Mistral to synthesize
+    const systemPrompt = 'Du bist Pronoia Recall, ein intelligentes Wissens-Interface für den Creator. Deine Aufgabe ist es, gefundene Notizen und Ideen kurz und prägnant auf Deutsch zusammenzufassen, um die Frage des Benutzers zu beantworten. Antworte in maximal 4 Sätzen. Sei professionell und direkt.';
+    const userPrompt = `Der Benutzer fragt: "Was weiß ich über ${query}?"
+    
+Hier sind die Suchergebnisse aus seiner Wissensdatenbank:
+${context}
+
+Fasse die wichtigsten Erkenntnisse zusammen, um dem Benutzer eine kompakte Antwort zu geben.`;
+
+    const summary = await askMistral(userPrompt, systemPrompt);
+
+    // 5. Send response
+    let responseText = '';
+    if (summary) {
+      responseText = `${summary}\n\n`;
+    } else {
+      responseText = `Hier sind deine Suchergebnisse für *${md(query)}*:\n\n`;
+    }
+
+    responseText += `*Gefundene Quellen:*\n` + sources.slice(0, 8).map(s => `- ${s}`).join('\n');
+    
+    await tgSend(chatId, responseText);
+  } catch (err) {
+    console.error('[telegram] handleRecall error:', (err as Error).message);
+    await tgSend(chatId, '❌ Fehler beim Durchsuchen deiner Daten.');
+  }
+}
+
 function projectKeyboard(projects: Array<{ id: string; name: string }>, action: 'pick' | 'setactive'): InlineKeyboard {
   return { inline_keyboard: projects.slice(0, 12).map(p => [{ text: p.name, callback_data: `${action}:${p.id}` }]) };
 }
@@ -262,6 +372,39 @@ async function processUpdate(update: any): Promise<void> {
     const link = await getLink(fromId);
     if (!link?.linked_at) {
       await tgSend(chatId, 'Noch nicht verbunden. Öffne die App → *Einstellungen* → *Connect Telegram* und sende mir `/link DEIN-CODE`.');
+      return;
+    }
+
+    const isRecallCmd = trimmed.toLowerCase().startsWith('/recall') || trimmed.toLowerCase().startsWith('/search');
+    const isRecallNl = trimmed.toLowerCase().startsWith('was weiß ich über') || 
+                       trimmed.toLowerCase().startsWith('suche nach') ||
+                       trimmed.toLowerCase().startsWith('erinnere mich an');
+    
+    if (isRecallCmd || isRecallNl) {
+      let query = '';
+      if (isRecallCmd) {
+        const parts = trimmed.split(/\s+/);
+        query = parts.slice(1).join(' ').trim();
+      } else {
+        if (trimmed.toLowerCase().startsWith('was weiß ich über')) {
+          query = trimmed.substring(18).trim();
+        } else if (trimmed.toLowerCase().startsWith('suche nach')) {
+          query = trimmed.substring(10).trim();
+        } else if (trimmed.toLowerCase().startsWith('erinnere mich an')) {
+          query = trimmed.substring(16).trim();
+        }
+      }
+      
+      if (query.endsWith('?')) {
+        query = query.slice(0, -1).trim();
+      }
+
+      if (!query) {
+        await tgSend(chatId, 'Nutzung: `/recall SUCHBEGRIFF` oder z.B. `Was weiß ich über SEO?`');
+        return;
+      }
+
+      await handleRecall(link, chatId, query);
       return;
     }
 

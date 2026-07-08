@@ -279,3 +279,119 @@ test('Telegram Voice Memo Transcription (B1)', async () => {
     globalThis.fetch = originalFetch;
   }
 });
+
+test('Telegram Instant Recall (B2)', async () => {
+  const sentMessages: any[] = [];
+
+  // Mock supabaseAdmin.from
+  supabaseAdmin.from = (table: string): any => {
+    if (table === 'processed_telegram_updates') {
+      return {
+        select: () => ({
+          eq: (col: string, val: any) => ({
+            maybeSingle: async () => {
+              return { data: null, error: null };
+            }
+          })
+        }),
+        insert: async (row: any) => {
+          return { error: null };
+        }
+      };
+    }
+
+    if (table === 'telegram_links') {
+      return {
+        select: () => ({
+          eq: () => ({
+            maybeSingle: async () => {
+              return { data: { owner_id: 'test-user', linked_at: new Date().toISOString() }, error: null };
+            }
+          })
+        })
+      };
+    }
+
+    if (table === 'ideas') {
+      return {
+        select: () => ({
+          eq: () => ({
+            or: () => ({
+              limit: async () => {
+                return {
+                  data: [{ title: 'SEO strategies', pain_points: 'high competition', packaging_questions: 'what works?' }],
+                  error: null
+                };
+              }
+            })
+          })
+        })
+      };
+    }
+
+    if (table === 'documents') {
+      return {
+        select: () => ({
+          eq: () => ({
+            or: () => ({
+              limit: async () => {
+                return {
+                  data: [{ title: 'SEO Checklist', body: '1. Keywords' }],
+                  error: null
+                };
+              }
+            })
+          })
+        })
+      };
+    }
+
+    return originalFrom.call(supabaseAdmin, table);
+  };
+
+  // Mock globalThis.fetch
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (url: any, options?: any) => {
+    const urlStr = url.toString();
+    if (urlStr.includes('/chat/completions')) {
+      return new Response(JSON.stringify({
+        choices: [{ message: { content: 'Hier ist eine Zusammenfassung über deine SEO-Ideen.' } }]
+      }));
+    }
+    if (urlStr.includes('/sendMessage')) {
+      const body = JSON.parse(options.body);
+      sentMessages.push(body);
+      return new Response(JSON.stringify({ ok: true }));
+    }
+    return originalFetch(url, options);
+  };
+
+  try {
+    const res = await fetch(`http://localhost:${port}/api/v1/telegram/webhook`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-telegram-bot-api-secret-token': testSecret
+      },
+      body: JSON.stringify({
+        update_id: 6001,
+        message: {
+          chat: { id: 123 },
+          from: { id: 123, username: 'tester' },
+          text: '/recall SEO'
+        }
+      })
+    });
+
+    assert.equal(res.status, 200);
+    const data: any = await res.json();
+    assert.equal(data.ok, true);
+
+    // Assert status and summary messages were sent back to user
+    assert.ok(sentMessages.some(m => m.text.includes('Suche in deinem Gehirn')));
+    assert.ok(sentMessages.some(m => m.text.includes('Hier ist eine Zusammenfassung über deine SEO-Ideen.')));
+    assert.ok(sentMessages.some(m => m.text.includes('Gefundene Quellen') && m.text.includes('SEO strategies') && m.text.includes('SEO Checklist')));
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
