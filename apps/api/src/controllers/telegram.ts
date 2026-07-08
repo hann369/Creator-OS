@@ -299,7 +299,7 @@ async function captureDocument(ownerId: string, title: string, body: string, pro
   const now = new Date().toISOString();
   const id = `doc-${crypto.randomUUID().slice(0, 8)}`;
   const { error } = await supabaseAdmin.from('documents').insert({
-    id, workspace_id: projectId ?? DEFAULT_WORKSPACE, owner_id: ownerId, project_id: projectId,
+    id, workspace_id: projectId ?? DEFAULT_WORKSPACE, owner_id: ownerId,
     title: title.slice(0, 500), body, tags: [],
     created_at: now, updated_at: now,
   });

@@ -625,7 +625,7 @@ test('Telegram Toggle Idea to Document Callback (B2 extension)', async () => {
     assert.equal(insertedDocuments.length, 1);
     assert.equal(insertedDocuments[0].body, 'Mein urspruenglicher Text');
     assert.equal(insertedDocuments[0].title, 'Umgewandelter Titel');
-    assert.equal(insertedDocuments[0].project_id, 'main-space');
+    assert.equal(insertedDocuments[0].workspace_id, 'main-space');
     assert.equal(answerCallbackText, 'In Dokument umgewandelt');
   } finally {
     globalThis.fetch = originalFetch;
