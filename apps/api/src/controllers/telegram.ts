@@ -430,6 +430,181 @@ Erstelle das JSON-Objekt.`;
   }
 }
 
+async function analyzeImageWithMistral(imageBuffer: Buffer, mimeType: string, prompt: string): Promise<string> {
+  const mistralKey = process.env.MISTRAL_API_KEY;
+  if (!mistralKey) return '';
+  const base64 = imageBuffer.toString('base64');
+  const dataUrl = `data:${mimeType};base64,${base64}`;
+
+  try {
+    const res = await fetch('https://api.mistral.ai/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${mistralKey}`
+      },
+      body: JSON.stringify({
+        model: 'pixtral-12b-2409',
+        messages: [
+          {
+            role: 'user',
+            content: [
+              { type: 'text', text: prompt },
+              { type: 'image_url', image_url: { url: dataUrl } }
+            ]
+          }
+        ]
+      })
+    });
+    if (!res.ok) {
+      console.error('[telegram] Mistral vision API failed:', res.status, await res.text());
+      return '';
+    }
+    const data: any = await res.json();
+    return data.choices?.[0]?.message?.content ?? '';
+  } catch (err) {
+    console.error('[telegram] analyzeImageWithMistral failed:', (err as Error).message);
+    return '';
+  }
+}
+
+function guessAssetKind(fileName: string): string {
+  const u = fileName.toLowerCase().split('?')[0];
+  if (/\.(png|jpe?g|gif|webp|svg|avif)$/.test(u)) return 'image';
+  if (/\.(mp4|mov|webm|mkv|avi)$/.test(u)) return 'video';
+  if (/\.(mp3|wav|ogg|m4a|flac)$/.test(u)) return 'audio';
+  if (/\.pdf$/.test(u)) return 'pdf';
+  return 'other';
+}
+
+async function handleMediaIngestion(
+  link: Link,
+  chatId: number,
+  media: { fileId: string; fileName: string; mimeType: string; caption?: string }
+): Promise<void> {
+  await tgSend(chatId, `📥 _Lade Datei "${md(media.fileName)}" herunter..._`);
+
+  try {
+    const filePath = await getTelegramFilePath(media.fileId);
+    if (!filePath) {
+      await tgSend(chatId, '❌ Fehler beim Abruf der Datei-URL von Telegram.');
+      return;
+    }
+
+    const fileUrl = `https://api.telegram.org/file/bot${process.env.TELEGRAM_BOT_TOKEN}/${filePath}`;
+    const fileRes = await fetch(fileUrl);
+    if (!fileRes.ok) {
+      await tgSend(chatId, '❌ Download-Fehler von Telegram.');
+      return;
+    }
+    const fileBuffer = Buffer.from(await fileRes.arrayBuffer());
+
+    // Upload to Supabase Storage
+    const storagePath = `${link.owner_id}/telegram/${crypto.randomUUID()}-${media.fileName}`;
+    const { error: uploadErr } = await supabaseAdmin.storage
+      .from('course-media')
+      .upload(storagePath, fileBuffer, { contentType: media.mimeType, upsert: true });
+
+    if (uploadErr) {
+      console.error('[telegram] Supabase upload failed:', uploadErr.message);
+      await tgSend(chatId, '❌ Fehler beim Hochladen in den Cloud-Speicher.');
+      return;
+    }
+
+    // Get signed URL (10 years)
+    const { data: signedData, error: signedErr } = await supabaseAdmin.storage
+      .from('course-media')
+      .createSignedUrl(storagePath, 315360000);
+
+    if (signedErr || !signedData?.signedUrl) {
+      console.error('[telegram] Failed to create signed URL:', signedErr?.message);
+      await tgSend(chatId, '❌ Fehler beim Erstellen der Freigabe-URL.');
+      return;
+    }
+
+    const fileLink = signedData.signedUrl;
+    const kind = guessAssetKind(media.fileName);
+    let title = media.fileName;
+    let desc = '';
+
+    if (media.mimeType.startsWith('image/')) {
+      await tgSend(chatId, '👁️ _Analysiere Bild mit AI (Vision OCR)..._');
+      const prompt = `Analysiere dieses Bild auf Deutsch. Falls es sich um ein handschriftliches Dokument, ein Whiteboard, einen Beleg oder Text handelt, transkribiere den gesamten Text wortwörtlich. Falls es ein Foto oder Bild ist, beschreibe den Inhalt präzise in 2-3 Sätzen. Generiere am Anfang eine Zeile mit einem vorgeschlagenen Titel im Format: 'TITLE: [Dein Titel]' (maximal 5 Worte).
+${media.caption ? `Vom User bereitgestellter Kontext/Bildunterschrift: "${media.caption}"` : ''}`;
+
+      const completionText = await analyzeImageWithMistral(fileBuffer, media.mimeType, prompt);
+      if (completionText) {
+        if (completionText.startsWith('TITLE:')) {
+          const firstLineEnd = completionText.indexOf('\n');
+          const titleLine = completionText.slice(0, firstLineEnd === -1 ? undefined : firstLineEnd);
+          title = titleLine.replace('TITLE:', '').trim();
+          desc = firstLineEnd === -1 ? '' : completionText.slice(firstLineEnd + 1).trim();
+        } else {
+          desc = completionText;
+        }
+      }
+    } else {
+      desc = media.caption || `${kind.toUpperCase()}-Dokument erfasst.`;
+    }
+
+    const now = new Date().toISOString();
+    const assetId = `asset-${crypto.randomUUID().slice(0, 8)}`;
+    const projectId = link.active_project_id;
+    const projects = await getProjects(link.owner_id);
+    const projName = projectName(projects, projectId) ?? 'Main Space';
+
+    // Insert Asset
+    const { error: assetErr } = await supabaseAdmin.from('assets').insert({
+      id: assetId,
+      workspace_id: projectId ?? DEFAULT_WORKSPACE,
+      owner_id: link.owner_id,
+      project_id: projectId,
+      title: title.slice(0, 200),
+      url: fileLink,
+      asset_kind: kind,
+      tags: ['telegram', kind],
+      caption: desc.slice(0, 1000),
+      created_at: now,
+      updated_at: now
+    });
+
+    if (assetErr) throw assetErr;
+
+    // Insert Idea pointing to Asset
+    const ideaId = `idea-${crypto.randomUUID().slice(0, 8)}`;
+    const ideaTitle = `Asset: ${title}`;
+    const ideaBody = `${desc}\n\n🔗 [Asset anzeigen](${fileLink})`;
+
+    const { error: ideaErr } = await supabaseAdmin.from('ideas').insert({
+      id: ideaId,
+      workspace_id: projectId ?? DEFAULT_WORKSPACE,
+      owner_id: link.owner_id,
+      project_id: projectId,
+      title: ideaTitle.slice(0, 500),
+      pain_points: ideaBody.slice(0, 1000),
+      status: 'Idea',
+      rating: 0,
+      archived: false,
+      created_at: now,
+      updated_at: now
+    });
+
+    if (ideaErr) throw ideaErr;
+
+    await tgSend(chatId, `📥 *Asset erfasst in ${md(projName)}!*\n\n*Titel:* ${md(title)}\n*Typ:* ${md(kind)}\n\n${desc ? `_Inhalt/OCR:_\n${md(desc.slice(0, 500))}` : ''}`, {
+      inline_keyboard: [
+        [
+          { text: '📄 In Dokument umwandeln', callback_data: `todoc:${ideaId}:${projectId}` },
+          { text: '📂 Anderes Projekt', callback_data: 'change' }
+        ]
+      ]
+    });
+  } catch (err) {
+    console.error('[telegram] handleMediaIngestion error:', (err as Error).message);
+    await tgSend(chatId, '❌ Fehler beim Verarbeiten des Assets.');
+  }
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Webhook — Telegram delivers updates here.
 // ─────────────────────────────────────────────────────────────────────────────
@@ -486,10 +661,12 @@ async function processUpdate(update: any): Promise<void> {
   const msg = update?.message ?? update?.edited_message;
   const text: string | undefined = msg?.text;
   const voice = msg?.voice ?? msg?.audio;
+  const photo = msg?.photo;
+  const document = msg?.document;
   const chatId: number | undefined = msg?.chat?.id;
   const fromId: number | undefined = msg?.from?.id;
   const username: string | undefined = msg?.from?.username;
-  if ((!text && !voice?.file_id) || chatId === undefined || fromId === undefined) return;
+  if ((!text && !voice?.file_id && !photo && !document) || chatId === undefined || fromId === undefined) return;
 
   const trimmed = text ? text.trim() : '';
   try {
@@ -508,6 +685,26 @@ async function processUpdate(update: any): Promise<void> {
     const link = await getLink(fromId);
     if (!link?.linked_at) {
       await tgSend(chatId, 'Noch nicht verbunden. Öffne die App → *Einstellungen* → *Connect Telegram* und sende mir `/link DEIN-CODE`.');
+      return;
+    }
+
+    if (photo && photo.length > 0) {
+      const bestPhoto = photo[photo.length - 1];
+      await handleMediaIngestion(link, chatId, {
+        fileId: bestPhoto.file_id,
+        fileName: 'telegram_photo.jpg',
+        mimeType: 'image/jpeg',
+        caption: msg.caption
+      });
+      return;
+    }
+    if (document) {
+      await handleMediaIngestion(link, chatId, {
+        fileId: document.file_id,
+        fileName: document.file_name || 'document',
+        mimeType: document.mime_type || 'application/octet-stream',
+        caption: msg.caption
+      });
       return;
     }
 

@@ -754,3 +754,175 @@ test('Telegram URL Ingestion (B3)', async () => {
     globalThis.fetch = originalFetch;
   }
 });
+
+test('Telegram Image Ingestion (B4)', async () => {
+  const insertedIdeas: any[] = [];
+  const insertedAssets: any[] = [];
+  const sentMessages: any[] = [];
+  let storageUploadCalled = false;
+  let signedUrlCalled = false;
+
+  const originalStorage = supabaseAdmin.storage;
+  // Mock Storage operations
+  supabaseAdmin.storage = {
+    from: (bucket: string): any => {
+      assert.equal(bucket, 'course-media');
+      return {
+        upload: async (path: string, body: any, options: any) => {
+          storageUploadCalled = true;
+          return { data: {}, error: null };
+        },
+        createSignedUrl: async (path: string, expires: number) => {
+          signedUrlCalled = true;
+          return { data: { signedUrl: 'https://mock.supabase.co/signed/file.jpg' }, error: null };
+        }
+      };
+    }
+  } as any;
+
+  supabaseAdmin.from = (table: string): any => {
+    if (table === 'processed_telegram_updates') {
+      return {
+        select: () => ({
+          eq: (col: string, val: any) => ({
+            maybeSingle: async () => {
+              return { data: null, error: null };
+            }
+          })
+        }),
+        insert: async (row: any) => {
+          return { error: null };
+        }
+      };
+    }
+
+    if (table === 'telegram_links') {
+      return {
+        select: () => ({
+          eq: () => ({
+            maybeSingle: async () => {
+              return { data: { owner_id: 'test-user', linked_at: new Date().toISOString(), active_project_id: 'main-space' }, error: null };
+            }
+          })
+        })
+      };
+    }
+
+    if (table === 'projects') {
+      return {
+        select: () => ({
+          eq: () => ({
+            order: async () => {
+              return { data: [{ id: 'main-space', name: 'Main Space' }], error: null };
+            }
+          })
+        })
+      };
+    }
+
+    if (table === 'assets') {
+      return {
+        insert: async (row: any) => {
+          insertedAssets.push(row);
+          return { error: null };
+        }
+      };
+    }
+
+    if (table === 'ideas') {
+      return {
+        insert: async (row: any) => {
+          insertedIdeas.push(row);
+          return { error: null };
+        }
+      };
+    }
+
+    return originalFrom.call(supabaseAdmin, table);
+  };
+
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (url: any, options?: any) => {
+    const urlStr = url.toString();
+    
+    // Telegram getFile metadata mock
+    if (urlStr.includes('/getFile')) {
+      return new Response(JSON.stringify({
+        ok: true,
+        result: { file_path: 'photos/photo.jpg' }
+      }));
+    }
+
+    // Telegram file content mock
+    if (urlStr.includes('/file/bot') && urlStr.includes('photos/photo.jpg')) {
+      return new Response('dummy-photo-bytes-content');
+    }
+
+    // Mistral Vision completions API
+    if (urlStr.includes('/chat/completions')) {
+      return new Response(JSON.stringify({
+        choices: [{ message: { content: 'TITLE: Whiteboard Skizze\nDies ist eine handschriftliche Notiz zum Creator OS Launch.' } }]
+      }));
+    }
+
+    // Telegram sendMessage mock
+    if (urlStr.includes('/sendMessage')) {
+      const body = JSON.parse(options.body);
+      sentMessages.push(body);
+      return new Response(JSON.stringify({ ok: true }));
+    }
+
+    return originalFetch(url, options);
+  };
+
+  try {
+    const res = await fetch(`http://localhost:${port}/api/v1/telegram/webhook`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-telegram-bot-api-secret-token': testSecret
+      },
+      body: JSON.stringify({
+        update_id: 10001,
+        message: {
+          chat: { id: 123 },
+          from: { id: 123, username: 'tester' },
+          photo: [
+            { file_id: 'ph-low-res', file_size: 100 },
+            { file_id: 'ph-high-res', file_size: 500 }
+          ],
+          caption: 'Das ist mein Launch-Plan'
+        }
+      })
+    });
+
+    assert.equal(res.status, 200);
+    const data: any = await res.json();
+    assert.equal(data.ok, true);
+
+    // Verify storage interactions
+    assert.ok(storageUploadCalled);
+    assert.ok(signedUrlCalled);
+
+    // Verify Asset was inserted
+    assert.equal(insertedAssets.length, 1);
+    assert.equal(insertedAssets[0].title, 'Whiteboard Skizze');
+    assert.equal(insertedAssets[0].url, 'https://mock.supabase.co/signed/file.jpg');
+    assert.equal(insertedAssets[0].asset_kind, 'image');
+    assert.equal(insertedAssets[0].caption, 'Dies ist eine handschriftliche Notiz zum Creator OS Launch.');
+
+    // Verify Idea referencing the Asset was inserted
+    assert.equal(insertedIdeas.length, 1);
+    assert.equal(insertedIdeas[0].title, 'Asset: Whiteboard Skizze');
+    assert.ok(insertedIdeas[0].pain_points.includes('Dies ist eine handschriftliche Notiz zum Creator OS Launch.'));
+    assert.ok(insertedIdeas[0].pain_points.includes('https://mock.supabase.co/signed/file.jpg'));
+    
+    // Verify Telegram user message confirmations
+    assert.ok(sentMessages.some(m => m.text.includes('Lade Datei')));
+    assert.ok(sentMessages.some(m => m.text.includes('Analysiere Bild mit AI')));
+    assert.ok(sentMessages.some(m => m.text.includes('Asset erfasst in Main Space') && m.text.includes('Whiteboard Skizze')));
+  } finally {
+    supabaseAdmin.storage = originalStorage;
+    globalThis.fetch = originalFetch;
+  }
+});
