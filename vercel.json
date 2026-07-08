@@ -3,7 +3,8 @@
   "buildCommand": "npm run build",
   "outputDirectory": "apps/web/dist",
   "crons": [
-    { "path": "/api/v1/telegram/briefing", "schedule": "0 6 * * *" }
+    { "path": "/api/v1/telegram/briefing", "schedule": "0 6 * * *" },
+    { "path": "/api/v1/telegram/reflection", "schedule": "0 21 * * *" }
   ],
   "rewrites": [
     { "source": "/api/:path*", "destination": "/api" },

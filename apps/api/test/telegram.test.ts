@@ -6,6 +6,7 @@ import type { Server } from 'http';
 let server: Server;
 const port = 3009;
 const testSecret = 'test-webhook-secret';
+const testCronSecret = 'test-cron-secret';
 
 let supabaseAdmin: any;
 let telegramRouter: any;
@@ -16,6 +17,7 @@ before(async () => {
   process.env.SUPABASE_URL = 'https://mock.supabase.co';
   process.env.SUPABASE_ANON_KEY = 'mock-anon-key';
   process.env.TELEGRAM_WEBHOOK_SECRET = testSecret;
+  process.env.CRON_SECRET = testCronSecret;
   process.env.TELEGRAM_BOT_TOKEN = '123456:mock-token';
   process.env.MISTRAL_API_KEY = 'mock-mistral-key';
 
@@ -923,6 +925,182 @@ test('Telegram Image Ingestion (B4)', async () => {
     assert.ok(sentMessages.some(m => m.text.includes('Asset erfasst in Main Space') && m.text.includes('Whiteboard Skizze')));
   } finally {
     supabaseAdmin.storage = originalStorage;
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('Telegram Evening Reflection Cron (B5)', async () => {
+  const sentMessages: any[] = [];
+
+  supabaseAdmin.from = (table: string): any => {
+    if (table === 'telegram_links') {
+      return {
+        select: () => ({
+          not: async () => {
+            return { data: [{ owner_id: 'test-user', telegram_chat_id: 123 }], error: null };
+          }
+        })
+      };
+    }
+
+    if (table === 'pipeline_cards') {
+      return {
+        select: () => ({
+          eq: () => ({
+            neq: () => ({
+              order: () => ({
+                limit: async () => {
+                  return { data: [{ title: 'Creator OS Launch' }], error: null };
+                }
+              })
+            })
+          })
+        })
+      };
+    }
+
+    if (table === 'goals') {
+      return {
+        select: () => ({
+          eq: () => ({
+            eq: () => ({
+              limit: async () => {
+                return { data: [{ title: '10k Subscribers' }], error: null };
+              }
+            })
+          })
+        })
+      };
+    }
+
+    return originalFrom.call(supabaseAdmin, table);
+  };
+
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (url: any, options?: any) => {
+    const urlStr = url.toString();
+    if (urlStr.includes('/sendMessage')) {
+      const body = JSON.parse(options.body);
+      sentMessages.push(body);
+      return new Response(JSON.stringify({ ok: true }));
+    }
+    return originalFetch(url, options);
+  };
+
+  try {
+    const res = await fetch(`http://localhost:${port}/api/v1/telegram/reflection?secret=${testCronSecret}`);
+    assert.equal(res.status, 200);
+    const data: any = await res.json();
+    assert.equal(data.ok, true);
+    assert.equal(data.sent, 1);
+
+    // Verify reflection prompt content
+    assert.ok(sentMessages.length > 0);
+    assert.ok(sentMessages[0].text.includes('Time for reflection'));
+    assert.ok(sentMessages[0].text.includes('Creator OS Launch'));
+    assert.ok(sentMessages[0].text.includes('10k Subscribers'));
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('Telegram Journal Command (B5)', async () => {
+  const insertedDocuments: any[] = [];
+  const sentMessages: any[] = [];
+
+  supabaseAdmin.from = (table: string): any => {
+    if (table === 'processed_telegram_updates') {
+      return {
+        select: () => ({
+          eq: (col: string, val: any) => ({
+            maybeSingle: async () => {
+              return { data: null, error: null };
+            }
+          })
+        }),
+        insert: async (row: any) => {
+          return { error: null };
+        }
+      };
+    }
+
+    if (table === 'telegram_links') {
+      return {
+        select: () => ({
+          eq: () => ({
+            maybeSingle: async () => {
+              return { data: { owner_id: 'test-user', linked_at: new Date().toISOString(), active_project_id: 'main-space' }, error: null };
+            }
+          })
+        })
+      };
+    }
+
+    if (table === 'projects') {
+      return {
+        select: () => ({
+          eq: () => ({
+            order: async () => {
+              return { data: [{ id: 'main-space', name: 'Main Space' }], error: null };
+            }
+          })
+        })
+      };
+    }
+
+    if (table === 'documents') {
+      return {
+        insert: async (row: any) => {
+          insertedDocuments.push(row);
+          return { error: null };
+        }
+      };
+    }
+
+    return originalFrom.call(supabaseAdmin, table);
+  };
+
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (url: any, options?: any) => {
+    const urlStr = url.toString();
+    if (urlStr.includes('/sendMessage')) {
+      const body = JSON.parse(options.body);
+      sentMessages.push(body);
+      return new Response(JSON.stringify({ ok: true }));
+    }
+    return originalFetch(url, options);
+  };
+
+  try {
+    const res = await fetch(`http://localhost:${port}/api/v1/telegram/webhook`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-telegram-bot-api-secret-token': testSecret
+      },
+      body: JSON.stringify({
+        update_id: 11001,
+        message: {
+          chat: { id: 123 },
+          from: { id: 123, username: 'tester' },
+          text: '/journal Heute lief das Coding super.'
+        }
+      })
+    });
+
+    assert.equal(res.status, 200);
+    const data: any = await res.json();
+    assert.equal(data.ok, true);
+
+    // Verify journal document was inserted
+    assert.equal(insertedDocuments.length, 1);
+    assert.ok(insertedDocuments[0].title.startsWith('Journal - '));
+    assert.equal(insertedDocuments[0].body, 'Heute lief das Coding super.');
+    assert.equal(insertedDocuments[0].workspace_id, 'main-space');
+
+    // Verify Telegram confirmation message
+    assert.ok(sentMessages.some(m => m.text.includes('Journal-Eintrag gespeichert') && m.text.includes('Main Space')));
+  } finally {
     globalThis.fetch = originalFetch;
   }
 });

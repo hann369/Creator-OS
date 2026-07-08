@@ -756,7 +756,35 @@ async function processUpdate(update: any): Promise<void> {
       await tgSend(chatId, `📂 Aktives Projekt${active ? `: *${md(active)}*` : ' — noch keins gewählt'}.\n\nWähle dein aktives Projekt:`, projectKeyboard(projects, 'setactive'));
       return;
     }
+    if (trimmed.toLowerCase().startsWith('/journal ') || trimmed.toLowerCase().startsWith('/reflection ')) {
+      const parts = trimmed.split(/\s+/);
+      const textToRoute = parts.slice(1).join(' ').trim();
+      if (!textToRoute) {
+        await tgSend(chatId, 'Nutzung: `/journal [Deine Reflexion für heute]`');
+        return;
+      }
+      const formattedDate = new Date().toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
+      const docTitle = `Journal - ${formattedDate}`;
 
+      const projects = await getProjects(link.owner_id);
+      const projectId = link.active_project_id;
+      const activeName = projectName(projects, projectId);
+
+      if (projectId && activeName) {
+        const docId = await captureDocument(link.owner_id, docTitle, textToRoute, projectId);
+        await tgSend(chatId, `📄 Journal-Eintrag gespeichert in *${md(activeName)}*.\n_Titel: "${md(docTitle)}"_`, {
+          inline_keyboard: [
+            [
+              { text: '💡 In Idee umwandeln', callback_data: `toidea:${docId}:${projectId}` },
+              { text: '📂 Anderes Projekt', callback_data: 'change' }
+            ]
+          ],
+        });
+      } else {
+        await routeContent(link, { chatId, text: textToRoute }, 'document');
+      }
+      return;
+    }
     const isDocCmd = trimmed.toLowerCase().startsWith('/doc ') || trimmed.toLowerCase().startsWith('/document ');
     const isIdeaCmd = trimmed.toLowerCase().startsWith('/idea ');
     let forcedType: 'idea' | 'document' | null = null;
@@ -1150,4 +1178,56 @@ telegramRouter.all('/briefing', async (req: Request, res: Response) => {
   const ok = CRON_SECRET() && (provided === CRON_SECRET() || bearer === CRON_SECRET());
   if (!ok) return res.status(401).json({ error: 'Unauthorized' });
   return runBriefing(res);
+});
+
+async function runReflection(res: Response) {
+  const { data: links, error } = await supabaseAdmin
+    .from('telegram_links').select('owner_id, telegram_chat_id')
+    .not('linked_at', 'is', null);
+  if (error) return res.status(500).json({ error: error.message });
+
+  let sent = 0;
+  for (const link of links ?? []) {
+    if (!link.telegram_chat_id) continue;
+    try {
+      const text = await composeReflectionPrompt(link.owner_id);
+      await tgSend(link.telegram_chat_id, text);
+      sent++;
+    } catch (err) {
+      console.error('[telegram] reflection failed for', link.owner_id, (err as Error).message);
+    }
+  }
+  return res.json({ ok: true, sent });
+}
+
+async function composeReflectionPrompt(ownerId: string): Promise<string> {
+  const [{ data: cards }, { data: goals }] = await Promise.all([
+    supabaseAdmin.from('pipeline_cards').select('title, status, executive_priority')
+      .eq('owner_id', ownerId).neq('status', 'published').order('executive_priority', { ascending: false }).limit(2),
+    supabaseAdmin.from('goals').select('title').eq('owner_id', ownerId).eq('status', 'active').limit(2),
+  ]);
+
+  const cardLines = (cards ?? []).map(c => `• ${c.title}`).join('\n');
+  const goalLines = (goals ?? []).map(g => `• ${g.title}`).join('\n');
+
+  let text = '🌙 *Time for reflection.*\n\n';
+  text += 'Wie lief dein Tag? Was hast du geschafft und worauf bist du heute stolz?\n';
+  
+  if (cardLines) {
+    text += `\n*Deine aktuellen Projekte:*\n${cardLines}\n`;
+  }
+  if (goalLines) {
+    text += `\n*Deine Ziele:*\n${goalLines}\n`;
+  }
+  
+  text += '\n_Antworte einfach hierauf, um deine Reflexion / dein Journal für heute festzuhalten._';
+  return text;
+}
+
+telegramRouter.all('/reflection', async (req: Request, res: Response) => {
+  const provided = req.headers['x-cron-secret'] ?? req.query.secret;
+  const bearer = req.headers.authorization?.match(/^Bearer\s+(.+)$/i)?.[1];
+  const ok = CRON_SECRET() && (provided === CRON_SECRET() || bearer === CRON_SECRET());
+  if (!ok) return res.status(401).json({ error: 'Unauthorized' });
+  return runReflection(res);
 });
