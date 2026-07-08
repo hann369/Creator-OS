@@ -133,3 +133,48 @@ export function edgeToRelationship(edge: Edge): Relationship {
     ...(edge.metadata ? { metadata: edge.metadata } : {}), createdAt: edge.createdAt,
   };
 }
+
+// ─── Content-card → graph node projection ─────────────────────────────────────
+// A pipeline card also lives in the graph as a "content mirror" node, so a piece
+// of content IS a node (see the mirror-node mechanism in the web WorkspaceContext).
+// This is the ONE canonical, tested definition of that projection; the web layer
+// derives its WorldNode-shaped mirror from here via `nodeToWorldNode`.
+
+/** Minimal card shape needed to project a content card into the graph. */
+export interface PipelineCardProjection {
+  id: string;
+  title: string;
+  hook?: string;
+  status: string;       // PipelineStatus, kept as string to avoid tight coupling
+  attachments?: unknown[];
+}
+
+/** Deterministic id of a card's content-mirror node (derivable from the card id). */
+export const contentMirrorNodeId = (cardId: string): string => `card:${cardId}`;
+
+/** Is this node a content-card mirror (rather than a genuine knowledge concept)? */
+export function isContentMirrorNode(node: Pick<Node, 'metadata'>): boolean {
+  return node.metadata?.isContentMirror === true;
+}
+
+/**
+ * Project a pipeline card into a unified graph Node. Placement (x/y) is derived
+ * deterministically from the card id so mirror nodes stay stable across loads and
+ * cluster in a "content lane" beneath the concept cloud.
+ */
+export function pipelineCardToNode(card: PipelineCardProjection, workspaceId: string, now: Date = new Date()): Node {
+  const h = [...card.id].reduce((a, c) => a + c.charCodeAt(0), 0);
+  const lifecycleState: NodeLifecycleState =
+    card.status === 'published' ? 'core_knowledge'
+    : card.status === 'production' ? 'growing'
+    : card.status === 'idea' ? 'created'
+    : 'growing';
+  return {
+    id: contentMirrorNodeId(card.id), workspaceId, type: 'project',
+    label: card.title,
+    description: card.hook || 'Content piece in the production pipeline.',
+    metadata: { cardId: card.id, isContentMirror: true, x: 240 + (h % 6) * 210, y: 600 + (h % 3) * 150 },
+    sourceCount: card.attachments?.length ?? 0,
+    lifecycleState, origin: 'entity', createdAt: now, updatedAt: now,
+  };
+}

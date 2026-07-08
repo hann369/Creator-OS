@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { X } from 'lucide-react';
 import { KnowledgeEvaluator, UserBehaviorLearner, ExecutiveFunctionEngine } from '@pronoia/cognition';
+import { isContentMirrorNode } from '@pronoia/domain';
 import type { ReasoningResult } from '@pronoia/ai';
 
 import { EditorView } from './views/EditorView.js';
@@ -132,7 +133,7 @@ export const App: React.FC<AppProps> = ({ project, onExitProject }) => {
   // ─── "Heute entdeckt" — real signals from the living knowledge graph ───
   // Count only genuine knowledge concepts, not the content-card mirror nodes.
   const discovery = useMemo(() => {
-    const concepts = nodes.filter(n => !n.metadata?.isContentMirror);
+    const concepts = nodes.filter(n => !isContentMirrorNode(n));
     return {
       maturedConcepts: concepts.filter(n => n.lifecycleState === 'growing').length,
       newThoughts: concepts.filter(n => n.lifecycleState === 'created').length,

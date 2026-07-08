@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import type { PipelineStatus, WorldNode, WorldEdge, CognitiveSession } from '@pronoia/domain';
+import { pipelineCardToNode, nodeToWorldNode, contentMirrorNodeId } from '@pronoia/domain';
 import { supabase } from '../lib/supabase.js';
 import { getActiveWorkspaceId } from '../lib/workspace.js';
 import { runIdentityLearning } from '../lib/identityLearning.js';
@@ -52,32 +53,14 @@ const WorkspaceContext = createContext<WorkspaceContextType | undefined>(undefin
 // Every pipeline card owns a deterministic "mirror" node in the World Model, so
 // a card IS a graph node (and a document, and an executive candidate). The id is
 // derivable from the card id, so we never need a foreign-key column.
-const mirrorNodeId = (cardId: string) => `card:${cardId}`;
+const mirrorNodeId = contentMirrorNodeId;
 
 // Deterministic placement from the card id keeps mirror nodes stable across loads
-// and clustered in a "content lane" beneath the concept cloud.
+// and clustered in a "content lane" beneath the concept cloud. The projection now
+// lives once in the tested domain layer (pipelineCardToNode); we re-shape it to the
+// legacy WorldNode via nodeToWorldNode.
 function buildMirrorNode(card: { id: string; title: string; hook?: string; status: string; attachments?: unknown[] }): WorldNode {
-  const h = [...card.id].reduce((a, c) => a + c.charCodeAt(0), 0);
-  const lifecycleState =
-    card.status === 'published' ? 'core_knowledge'
-    : card.status === 'production' ? 'growing'
-    : card.status === 'idea' ? 'created'
-    : 'growing';
-  return {
-    id: mirrorNodeId(card.id),
-    workspaceId: getActiveWorkspaceId(),
-    name: card.title,
-    type: 'project',
-    description: card.hook || 'Content piece in the production pipeline.',
-    metadata: { cardId: card.id, isContentMirror: true, x: 240 + (h % 6) * 210, y: 600 + (h % 3) * 150 },
-    confidence: { extractionConfidence: 1, reasoningConfidence: 1, relationshipConfidence: 1, verificationConfidence: 1 },
-    sourceCount: card.attachments?.length ?? 0,
-    lastVerified: new Date(),
-    derivedFrom: [],
-    lifecycleState,
-    createdAt: new Date(),
-    updatedAt: new Date()
-  };
+  return nodeToWorldNode(pipelineCardToNode(card, getActiveWorkspaceId()));
 }
 
 // ─── Supabase Row ↔ Domain Model mappers moved to entityStore ───────────────────

@@ -5,6 +5,7 @@ import type { Moodboard } from '../src/index.ts';
 import {
   worldNodeToNode, nodeToWorldNode, entityToNode, nodeToEntity,
   worldEdgeToEdge, relationshipToEdge, edgeToRelationship,
+  pipelineCardToNode, contentMirrorNodeId, isContentMirrorNode,
 } from '../src/graph.ts';
 
 const conf = { extractionConfidence: 0.9, reasoningConfidence: 0.8, relationshipConfidence: 0.7, verificationConfidence: 1 };
@@ -72,6 +73,40 @@ test('Relationship → Edge → Relationship is lossless', () => {
   };
   const back = edgeToRelationship(relationshipToEdge(rel));
   assert.deepEqual(back, rel);
+});
+
+// ─── Content-card → node projection ──────────────────────────────────────────
+test('pipelineCardToNode projects a card into a stable content-mirror node', () => {
+  const card = { id: 'card-abc', title: 'Multi-Agent Intro', hook: 'why agents win', status: 'production', attachments: [{}, {}] };
+  const node = pipelineCardToNode(card, 'ws', now);
+
+  assert.equal(node.id, contentMirrorNodeId('card-abc'));
+  assert.equal(node.id, 'card:card-abc');
+  assert.equal(node.type, 'project');
+  assert.equal(node.label, 'Multi-Agent Intro');
+  assert.equal(node.description, 'why agents win');
+  assert.equal(node.lifecycleState, 'growing');            // production → growing
+  assert.equal(node.sourceCount, 2);                        // attachments.length
+  assert.equal(node.metadata.isContentMirror, true);
+  assert.ok(isContentMirrorNode(node));
+  // placement is deterministic (stable across loads) and lives in the content lane (y ≥ 600)
+  assert.equal(typeof node.metadata.x, 'number');
+  assert.ok((node.metadata.y as number) >= 600);
+  const again = pipelineCardToNode(card, 'ws', now);
+  assert.deepEqual(again.metadata, node.metadata);
+});
+
+test('pipelineCardToNode → nodeToWorldNode reproduces the legacy mirror-node shape', () => {
+  const card = { id: 'card-xyz', title: 'Draft', status: 'published' as const };
+  const wn = nodeToWorldNode(pipelineCardToNode(card, 'ws', now));
+  assert.equal(wn.id, 'card:card-xyz');
+  assert.equal(wn.name, 'Draft');
+  assert.equal(wn.type, 'project');
+  assert.equal(wn.lifecycleState, 'core_knowledge');       // published → core_knowledge
+  assert.equal(wn.metadata.isContentMirror, true);
+  assert.equal(wn.metadata.cardId, 'card-xyz');
+  // confidence is defaulted to full by nodeToWorldNode (matches the old buildMirrorNode)
+  assert.equal(wn.confidence.verificationConfidence, 1);
 });
 
 test('both node models collapse into one NodeType space (concept exists in both origins)', () => {

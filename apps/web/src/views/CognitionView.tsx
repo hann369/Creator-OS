@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Compass, Award, X, Activity, Link as LinkIcon, FileText, Target, ArrowRight, ArrowLeft } from 'lucide-react';
 import { useWorkspace } from '../context/WorkspaceContext.js';
 import type { WorldNode } from '@pronoia/domain';
+import { isContentMirrorNode } from '@pronoia/domain';
 
 interface CognitionViewProps {
   onOpenCard?: (id: string, name: string) => void;
@@ -58,7 +59,7 @@ export const CognitionView: React.FC<CognitionViewProps> = ({ onOpenCard }) => {
         .map(relNode)
         .filter((n): n is WorldNode => !!n)
     : [];
-  const contentUsing = connectedNodes.filter(n => n.metadata?.isContentMirror);
+  const contentUsing = connectedNodes.filter(isContentMirrorNode);
   const goalsDependent = connectedNodes.filter(n => n.type === 'goal' && n.id !== selectedNode?.id);
 
   const renderRelRow = (edge: typeof edges[number], node: WorldNode, dir: 'in' | 'out') => (
@@ -450,7 +451,7 @@ export const CognitionView: React.FC<CognitionViewProps> = ({ onOpenCard }) => {
                 {selectedNode.name}
               </h3>
               <span className="label-mono" style={{ fontSize: '10px' }}>
-                {selectedNode.metadata?.isContentMirror ? 'CONTENT' : selectedNode.type.toUpperCase()} • Lifecycle: {selectedNode.lifecycleState.toUpperCase()}
+                {isContentMirrorNode(selectedNode) ? 'CONTENT' : selectedNode.type.toUpperCase()} • Lifecycle: {selectedNode.lifecycleState.toUpperCase()}
               </span>
             </div>
 
@@ -481,7 +482,7 @@ export const CognitionView: React.FC<CognitionViewProps> = ({ onOpenCard }) => {
                 <Compass size={13} color="var(--accent-color)" /> Warum existiert dieser Knoten?
               </h4>
               <p style={{ fontSize: '12px', color: 'var(--text-secondary)', lineHeight: '1.6' }}>
-                {selectedNode.metadata?.isContentMirror
+                {isContentMirrorNode(selectedNode)
                   ? 'Ein Content-Stück aus der Pipeline, das im Wissensgraph lebt. '
                   : `Erfasst als ${selectedNode.type}. `}
                 {selectedNode.sourceCount > 0 && `Gestützt von ${selectedNode.sourceCount} Quelle(n). `}
