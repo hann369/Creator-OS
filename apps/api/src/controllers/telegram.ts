@@ -101,7 +101,7 @@ async function transcribeAudio(filePath: string): Promise<string | null> {
     const formData = new FormData();
     const blob = new Blob([buffer], { type: 'audio/ogg' });
     formData.append('file', blob, 'voice.ogg');
-    formData.append('model', 'voxtral-mini-transcribe-latest');
+    formData.append('model', process.env.MISTRAL_TRANSCRIPTION_MODEL ?? 'voxtral-mini-latest');
 
     const mistralRes = await fetch('https://api.mistral.ai/v1/audio/transcriptions', {
       method: 'POST',
