@@ -134,6 +134,39 @@ telegramRouter.post('/webhook', async (req: Request, res: Response) => {
   if (!WEBHOOK_SECRET() || secret !== WEBHOOK_SECRET()) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
+
+  const updateId = req.body?.update_id;
+  if (typeof updateId === 'number') {
+    try {
+      const { data, error } = await supabaseAdmin
+        .from('processed_telegram_updates')
+        .select('update_id')
+        .eq('update_id', updateId)
+        .maybeSingle();
+
+      if (error) {
+        console.warn('[telegram] Database check for update_id failed:', error.message);
+      } else if (data) {
+        console.log(`[telegram] Duplicate update ignored: ${updateId}`);
+        return res.status(200).json({ ok: true, ignored: true });
+      }
+
+      const { error: insertError } = await supabaseAdmin
+        .from('processed_telegram_updates')
+        .insert({ update_id: updateId });
+
+      if (insertError) {
+        if (insertError.code === '23505') {
+          console.log(`[telegram] Parallel duplicate update ignored: ${updateId}`);
+          return res.status(200).json({ ok: true, ignored: true });
+        }
+        console.warn('[telegram] Failed to persist update_id:', insertError.message);
+      }
+    } catch (dbErr) {
+      console.error('[telegram] Idempotency check error:', (dbErr as Error).message);
+    }
+  }
+
   // On Vercel serverless the function is frozen once the response is sent, so we
   // must finish all DB work + replies BEFORE responding — never ack-then-process.
   try {

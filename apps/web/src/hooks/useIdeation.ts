@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../lib/supabase.js';
-import { getActiveWorkspaceId, scopedKey } from '../lib/workspace.js';
+import { getActiveWorkspaceId } from '../lib/workspace.js';
 
 // The Ideation Portal (mirrors the Notion "Ideation Portal"): a Hitlist of
 // inspiration creators + an Idea Bank of rated, status-tracked ideas. Project-
@@ -22,6 +22,7 @@ export interface Creator {
 export interface Idea {
   id: string;
   workspaceId: string;
+  projectId?: string;        // → Project.id
   title: string;
   status: IdeaStatus;
   rating: number;            // 0..5
@@ -53,6 +54,7 @@ function creatorToRow(c: Creator) {
 function rowToIdea(r: any): Idea {
   return {
     id: r.id, workspaceId: r.workspace_id ?? getActiveWorkspaceId(),
+    projectId: r.project_id ?? undefined,
     title: r.title ?? '', status: (r.status ?? 'Idea') as IdeaStatus, rating: r.rating ?? 0,
     creatorId: r.creator_id ?? r.creatorId ?? undefined, inspirationUrl: r.inspiration_url ?? r.inspirationUrl ?? undefined,
     painPoints: r.pain_points ?? r.painPoints ?? undefined, packagingQuestions: r.packaging_questions ?? r.packagingQuestions ?? undefined,
@@ -62,7 +64,7 @@ function rowToIdea(r: any): Idea {
 }
 function ideaToRow(i: Idea) {
   return {
-    id: i.id, workspace_id: i.workspaceId, title: i.title, status: i.status, rating: i.rating,
+    id: i.id, workspace_id: i.workspaceId, project_id: i.projectId ?? null, title: i.title, status: i.status, rating: i.rating,
     creator_id: i.creatorId ?? null, inspiration_url: i.inspirationUrl ?? null, pain_points: i.painPoints ?? null,
     packaging_questions: i.packagingQuestions ?? null, archived: i.archived, promoted_card_id: i.promotedCardId ?? null,
     created_at: i.createdAt.toISOString(), updated_at: i.updatedAt.toISOString(),
@@ -70,11 +72,11 @@ function ideaToRow(i: Idea) {
 }
 
 function loadLocal<T>(key: string, map: (r: any) => T): T[] {
-  try { const raw = localStorage.getItem(scopedKey(key)); if (raw) return (JSON.parse(raw) as any[]).map(map); } catch { /* ignore */ }
+  try { const raw = localStorage.getItem(key); if (raw) return (JSON.parse(raw) as any[]).map(map); } catch { /* ignore */ }
   return [];
 }
 function persistLocal(key: string, items: unknown[]) {
-  try { localStorage.setItem(scopedKey(key), JSON.stringify(items)); } catch { /* ignore */ }
+  try { localStorage.setItem(key, JSON.stringify(items)); } catch { /* ignore */ }
 }
 
 export function useIdeation() {
@@ -84,11 +86,10 @@ export function useIdeation() {
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const ws = getActiveWorkspaceId();
       try {
         const [c, i] = await Promise.all([
-          supabase.from('ideation_creators').select('*').eq('workspace_id', ws),
-          supabase.from('ideas').select('*').eq('workspace_id', ws),
+          supabase.from('ideation_creators').select('*'),
+          supabase.from('ideas').select('*'),
         ]);
         if (cancelled) return;
         if (!c.error && c.data) { const m = c.data.map(rowToCreator); setCreators(m); persistLocal(CREATORS_LS, c.data); }
@@ -122,9 +123,20 @@ export function useIdeation() {
   }, []);
 
   // ─── Ideas (Idea Bank) ────────────────────────────────────────────────────
-  const addIdea = useCallback((title: string): Idea => {
+  const addIdea = useCallback((title: string, projectId?: string): Idea => {
     const now = new Date();
-    const i: Idea = { id: uid('idea'), workspaceId: getActiveWorkspaceId(), title: title.trim() || 'New idea', status: 'Idea', rating: 0, archived: false, createdAt: now, updatedAt: now };
+    const targetProject = projectId || getActiveWorkspaceId();
+    const i: Idea = {
+      id: uid('idea'),
+      workspaceId: targetProject,
+      projectId: targetProject !== 'main-space' ? targetProject : undefined,
+      title: title.trim() || 'New idea',
+      status: 'Idea',
+      rating: 0,
+      archived: false,
+      createdAt: now,
+      updatedAt: now
+    };
     setIdeas(prev => { const next = [...prev, i]; persistLocal(IDEAS_LS, next.map(ideaToRow)); return next; });
     supabase.from('ideas').upsert(ideaToRow(i), { onConflict: 'id' }).then(() => {}, () => {});
     return i;

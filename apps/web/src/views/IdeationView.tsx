@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Star, Plus, Trash2, Instagram, Youtube, ExternalLink, ArrowRight, Archive, Target, Zap } from 'lucide-react';
 import { useIdeation, IDEA_STATUSES, type IdeaStatus, type Idea } from '../hooks/useIdeation.js';
 import { useWorkspace } from '../context/WorkspaceContext.js';
+import { useProjects } from '../hooks/useProjects.js';
 
 const STATUS_COLOR: Record<IdeaStatus, string> = {
   'Idea': '#8b5cf6', 'Draft': '#6b7280', 'Ready To Record': '#3b82f6',
@@ -33,6 +34,7 @@ const Callout: React.FC<{ icon: React.ReactNode; title: string; children: React.
 export const IdeationView: React.FC = () => {
   const { creators, ideas, addCreator, updateCreator, deleteCreator, addIdea, updateIdea, deleteIdea } = useIdeation();
   const { createCard, addActivityLog } = useWorkspace();
+  const { projects } = useProjects();
 
   const [crName, setCrName] = useState('');
   const [crIg, setCrIg] = useState('');
@@ -41,10 +43,17 @@ export const IdeationView: React.FC = () => {
 
   const [ideaTitle, setIdeaTitle] = useState('');
   const [ideaFilter, setIdeaFilter] = useState<'all' | 'unrated' | 'archive'>('all');
+  const [selectedProjectFilter, setSelectedProjectFilter] = useState<string>('all');
   const [openIdeaId, setOpenIdeaId] = useState<string | null>(null);
 
   const submitCreator = () => { if (!crName.trim()) return; addCreator(crName, crIg.trim() || undefined, crYt.trim() || undefined); setCrName(''); setCrIg(''); setCrYt(''); };
-  const submitIdea = () => { if (!ideaTitle.trim()) return; const i = addIdea(ideaTitle); setIdeaTitle(''); setOpenIdeaId(i.id); };
+  const submitIdea = () => {
+    if (!ideaTitle.trim()) return;
+    const targetProject = selectedProjectFilter !== 'all' ? selectedProjectFilter : undefined;
+    const i = addIdea(ideaTitle, targetProject);
+    setIdeaTitle('');
+    setOpenIdeaId(i.id);
+  };
 
   const promote = (idea: Idea) => {
     const cardId = createCard(idea.title, 'idea');
@@ -56,6 +65,14 @@ export const IdeationView: React.FC = () => {
   const shownIdeas = ideas
     .filter(i => ideaFilter === 'archive' ? i.archived : !i.archived)
     .filter(i => ideaFilter === 'unrated' ? i.rating === 0 : true)
+    .filter(i => {
+      if (selectedProjectFilter === 'all') return true;
+      const ideaProjId = i.projectId || i.workspaceId || 'main-space';
+      if (selectedProjectFilter === 'main-space') {
+        return ideaProjId === 'main-space';
+      }
+      return ideaProjId === selectedProjectFilter;
+    })
     .sort((a, b) => b.rating - a.rating || b.createdAt.getTime() - a.createdAt.getTime());
 
   return (
@@ -103,10 +120,25 @@ export const IdeationView: React.FC = () => {
             <button className="btn-sage-primary" style={{ padding: '7px 12px', fontSize: '12px', flexShrink: 0, display: 'flex', alignItems: 'center', gap: '4px' }} onClick={submitIdea}><Plus size={12} /> Add</button>
           </div>
 
-          <div style={{ display: 'flex', gap: '6px', marginBottom: '10px' }}>
-            {(['all', 'unrated', 'archive'] as const).map(f => (
-              <button key={f} onClick={() => setIdeaFilter(f)} className="label-mono" style={{ fontSize: '9px', padding: '3px 10px', borderRadius: '99px', border: '1px solid var(--border-color)', cursor: 'pointer', textTransform: 'capitalize', background: ideaFilter === f ? 'var(--accent-light)' : 'transparent', color: ideaFilter === f ? 'var(--accent-color)' : 'var(--text-secondary)' }}>{f}</button>
-            ))}
+          <div style={{ display: 'flex', gap: '6px', marginBottom: '10px', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div style={{ display: 'flex', gap: '6px' }}>
+              {(['all', 'unrated', 'archive'] as const).map(f => (
+                <button key={f} onClick={() => setIdeaFilter(f)} className="label-mono" style={{ fontSize: '9px', padding: '3px 10px', borderRadius: '99px', border: '1px solid var(--border-color)', cursor: 'pointer', textTransform: 'capitalize', background: ideaFilter === f ? 'var(--accent-light)' : 'transparent', color: ideaFilter === f ? 'var(--accent-color)' : 'var(--text-secondary)' }}>{f}</button>
+              ))}
+            </div>
+            <div>
+              <select
+                value={selectedProjectFilter}
+                onChange={e => setSelectedProjectFilter(e.target.value)}
+                style={{ ...inputStyle, padding: '3px 8px', fontSize: '9px', width: 'auto', borderRadius: '99px', fontFamily: 'var(--font-mono)' }}
+              >
+                <option value="all">📁 All Projects</option>
+                <option value="main-space">📁 Main Space</option>
+                {projects.filter(p => p.id !== 'main-space').map(p => (
+                  <option key={p.id} value={p.id}>📁 {p.name}</option>
+                ))}
+              </select>
+            </div>
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
@@ -114,6 +146,9 @@ export const IdeationView: React.FC = () => {
             {shownIdeas.map(idea => {
               const open = openIdeaId === idea.id;
               const creator = creators.find(c => c.id === idea.creatorId);
+              const ideaProjId = idea.projectId || idea.workspaceId || 'main-space';
+              const proj = projects.find(p => p.id === ideaProjId);
+              const projName = proj ? proj.name : (ideaProjId === 'main-space' ? 'Main Space' : 'Unknown Project');
               return (
                 <div key={idea.id} style={{ background: '#fff', border: '1px solid var(--border-color)', borderRadius: '10px', padding: '12px' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -122,12 +157,35 @@ export const IdeationView: React.FC = () => {
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '8px' }}>
                     <Stars value={idea.rating} onChange={n => updateIdea(idea.id, { rating: n })} />
-                    {creator && <span style={{ fontSize: '10px', color: 'var(--text-secondary)', fontFamily: 'var(--font-mono)' }}>via {creator.name}</span>}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      {projName && (
+                        <span style={{ fontSize: '9px', padding: '2px 6px', background: 'rgba(0,0,0,0.03)', borderRadius: '4px', color: 'var(--text-secondary)', fontFamily: 'var(--font-mono)' }}>
+                          {projName}
+                        </span>
+                      )}
+                      {creator && <span style={{ fontSize: '10px', color: 'var(--text-secondary)', fontFamily: 'var(--font-mono)' }}>via {creator.name}</span>}
+                    </div>
                   </div>
 
                   {open && (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '12px', paddingTop: '12px', borderTop: '1px solid var(--border-color)' }}>
                       <div style={{ display: 'flex', gap: '6px' }}>
+                        <select
+                          value={idea.projectId || idea.workspaceId || 'main-space'}
+                          onChange={e => {
+                            const val = e.target.value;
+                            updateIdea(idea.id, {
+                              projectId: val !== 'main-space' ? val : undefined,
+                              workspaceId: val
+                            });
+                          }}
+                          style={{ ...inputStyle, flex: 1 }}
+                        >
+                          <option value="main-space">📁 Main Space</option>
+                          {projects.filter(p => p.id !== 'main-space').map(p => (
+                            <option key={p.id} value={p.id}>📁 {p.name}</option>
+                          ))}
+                        </select>
                         <select value={idea.status} onChange={e => updateIdea(idea.id, { status: e.target.value as IdeaStatus })} style={{ ...inputStyle, flex: 1 }}>
                           {IDEA_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
                         </select>
