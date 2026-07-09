@@ -11,7 +11,7 @@ import { fetchTranscriptFromBrowser } from '../lib/transcriptFetch.js';
 // server-only columns (comments/metadata/embedding) that the UI never sends.
 
 export interface LibVideoAnalysis {
-  topic: string; subTopics: string[]; seed: string; seedPattern: string; hook: string; hookPattern: string;
+  topic: string; subTopics: string[]; seed: string; seedPattern: string; substance?: string; hook: string; hookPattern: string;
   mechanism: string; audience: string; problem: string; promise: string; cta: string;
   storyStructure: string; editingStyle: string; visualStyle: string; emotion: string; novelty: string;
   retentionTechniques: string[]; actionableTakeaways: string[]; claims: string[];

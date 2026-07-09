@@ -21,17 +21,26 @@ export const HOOK_PATTERNS = [
 ] as const;
 
 export const SEED_PATTERNS = [
-  'Experiment',
-  'Transformation',
-  'Framework',
-  'Ranking',
-  'Tutorial',
-  'Mistake',
-  'Reaction',
-  'Story',
-  'Challenge',
-  'Myth Busting',
+  'Breakdown/Explainer',
   'Case Study',
+  'Problem Solution',
+  'Common Mistake/Trap',
+  'Tutorial',
+  'Listicle',
+  'Scenario',
+  'A vs B (vs C) Comparison',
+  'Q&A',
+  'Ranking/Rating/Tier List',
+  'Levels',
+  'Reaction',
+  'Skit/Humor',
+  'Hero\'s Journey',
+  'Personal Learning/Epiphany',
+  'Day In The Life',
+  'Personal Update',
+  'About Me',
+  'Episode Series/Social Show',
+  'Challenge',
 ] as const;
 
 export const MECHANISMS = [

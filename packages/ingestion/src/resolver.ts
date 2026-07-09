@@ -39,25 +39,28 @@ const youtubeMatcher: SourceMatcher = {
   platform: 'youtube',
   match(u) {
     const host = u.hostname.replace(/^www\./, '');
+    const isYtBe = host === 'youtu.be';
+    // www / m / music / gaming subdomains + youtube-nocookie.
+    const isYt = host === 'youtube.com' || host.endsWith('.youtube.com') || host === 'youtube-nocookie.com' || host.endsWith('.youtube-nocookie.com');
+    if (!isYtBe && !isYt) return null;
+
+    const parts = u.pathname.split('/').filter(Boolean);
     let videoId: string | null = null;
     let mediaType: MediaType = 'longform';
 
-    if (host === 'youtu.be') {
-      videoId = u.pathname.split('/').filter(Boolean)[0] ?? null;
-    } else if (host === 'youtube.com' || host === 'm.youtube.com') {
-      if (u.pathname.startsWith('/shorts/')) {
-        videoId = u.pathname.split('/')[2] ?? null;
-        mediaType = 'short';
-      } else if (u.pathname === '/watch') {
-        videoId = u.searchParams.get('v');
-      } else if (u.pathname.startsWith('/embed/')) {
-        videoId = u.pathname.split('/')[2] ?? null;
-      }
-    } else {
-      return null;
+    if (isYtBe) {
+      videoId = parts[0] ?? null;
+    } else if (parts[0] === 'shorts') {
+      videoId = parts[1] ?? null;
+      mediaType = 'short';
+    } else if (u.pathname === '/watch') {
+      videoId = u.searchParams.get('v');
+    } else if (parts[0] === 'embed' || parts[0] === 'v' || parts[0] === 'live' || parts[0] === 'shorts') {
+      videoId = parts[1] ?? null;
     }
 
-    if (!videoId) return null;
+    // YouTube ids are 11 chars of [A-Za-z0-9_-]; guard against picking a handle etc.
+    if (!videoId || !/^[A-Za-z0-9_-]{11}$/.test(videoId)) return null;
     return {
       creator: null,
       creatorId: null,
@@ -72,7 +75,7 @@ const instagramMatcher: SourceMatcher = {
   platform: 'instagram',
   match(u) {
     const host = u.hostname.replace(/^www\./, '');
-    if (host !== 'instagram.com') return null;
+    if (host !== 'instagram.com' && !host.endsWith('.instagram.com')) return null;
 
     const parts = u.pathname.split('/').filter(Boolean);
     // /reel/{shortcode}, /p/{shortcode}, /{user}/reel/{shortcode}
@@ -105,9 +108,14 @@ export function registerMatcher(matcher: SourceMatcher): void {
 }
 
 export function resolveSource(rawUrl: string): ResolvedSource {
+  // Tolerate scheme-less pastes ("youtube.com/…", "instagram.com/reel/…") and
+  // stray whitespace/wrapping angle brackets that break new URL().
+  let cleaned = rawUrl.trim().replace(/^<|>$/g, '');
+  if (!/^https?:\/\//i.test(cleaned)) cleaned = `https://${cleaned}`;
+
   let u: URL;
   try {
-    u = new URL(rawUrl.trim());
+    u = new URL(cleaned);
   } catch {
     throw new UnsupportedSourceError(rawUrl);
   }

@@ -49,7 +49,9 @@ libraryRouter.post('/ingest', async (req, res) => {
     }
   } catch (err) {
     if (err instanceof UnsupportedSourceError) {
-      return res.status(400).json({ error: err.message });
+      return res.status(400).json({
+        error: 'Diese URL wird noch nicht unterstützt. Aktuell: YouTube (Video oder /shorts/) und Instagram (/reel/ oder /p/). Kopiere den Link direkt aus dem Teilen-Menü.',
+      });
     }
     return res.status(500).json({ error: (err as Error)?.message ?? 'Ingestion failed' });
   }

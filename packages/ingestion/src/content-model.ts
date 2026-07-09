@@ -75,6 +75,7 @@ export interface VideoAnalysis {
   subTopics: string[];
   seed: string;
   seedPattern: string;      // classified into SEED_PATTERNS
+  substance?: string;       // extracted substance of the video
   hook: string;
   hookPattern: string;      // classified into HOOK_PATTERNS
   mechanism: string;        // classified into MECHANISMS

@@ -20,12 +20,19 @@ import {
 const SYSTEM_PROMPT = `You are a content intelligence analyst. Given a short-form video's
 metadata, transcript and top comments, extract structured knowledge.
 
+Here are the definitions of the key concepts you must extract:
+- Topic: The interest topic or subject focus of the video. This is the subcategory of a niche (e.g., "muscle building" or "STR tax loophole", not just "fitness" or "finance").
+- Seed: The actual core idea, premise, or one-line headline of the video (e.g. "Steal this $30M content strategy called T.D.S."). It should be highly relevant, valuable, unique, and shocking/interesting.
+- seedPattern (Format): The high-level sequencing or structure for how the video is communicated. Choose the closest one from: ${JSON.stringify(SEED_PATTERNS)}.
+- Substance: The context, facts, angles, takes, or examples shared in the video that are framed in a shocking, non-obvious, or interesting way. Summarize this briefly (e.g. "1. Facts about hot sauce sales; 2. Contrarian angle that hot sauce is just a content marketing stunt").
+
 Return ONLY a JSON object with EXACTLY these fields (no prose, no markdown):
 {
   "topic": string,
   "subTopics": string[],
   "seed": string,
   "seedPattern": one of ${JSON.stringify(SEED_PATTERNS)},
+  "substance": string,
   "hook": string,
   "hookPattern": one of ${JSON.stringify(HOOK_PATTERNS)},
   "mechanism": one of ${JSON.stringify(MECHANISMS)},
@@ -48,7 +55,7 @@ Return ONLY a JSON object with EXACTLY these fields (no prose, no markdown):
 Use "" or [] when unknown — never omit a field.`;
 
 const REQUIRED_STRING_FIELDS: (keyof VideoAnalysis)[] = [
-  'topic', 'seed', 'seedPattern', 'hook', 'hookPattern', 'mechanism', 'audience',
+  'topic', 'seed', 'seedPattern', 'substance', 'hook', 'hookPattern', 'mechanism', 'audience',
   'problem', 'promise', 'cta', 'storyStructure', 'editingStyle', 'visualStyle',
   'emotion', 'novelty',
 ];

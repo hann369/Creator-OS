@@ -45,14 +45,28 @@ test('resolver handles Instagram reel and post forms', () => {
   assert.equal(post.mediaType, 'image');
 });
 
+test('resolver tolerates scheme-less pastes and extra hosts/paths', () => {
+  // No https:// prefix (the most common paste failure).
+  assert.equal(resolveSource('youtube.com/watch?v=dQw4w9WgXcQ').videoId, 'dQw4w9WgXcQ');
+  assert.equal(resolveSource('youtu.be/dQw4w9WgXcQ').videoId, 'dQw4w9WgXcQ');
+  assert.equal(resolveSource('www.instagram.com/reel/CxYz1234567/').platform, 'instagram');
+  // Mobile/music subdomains + live + nocookie.
+  assert.equal(resolveSource('https://m.youtube.com/watch?v=dQw4w9WgXcQ').videoId, 'dQw4w9WgXcQ');
+  assert.equal(resolveSource('https://music.youtube.com/watch?v=dQw4w9WgXcQ').videoId, 'dQw4w9WgXcQ');
+  assert.equal(resolveSource('https://www.youtube.com/live/dQw4w9WgXcQ?feature=x').videoId, 'dQw4w9WgXcQ');
+  // Shorts + tracking params.
+  assert.equal(resolveSource('https://youtube.com/shorts/dQw4w9WgXcQ?si=abc').mediaType, 'short');
+});
+
 test('resolver throws on unsupported URLs', () => {
   assert.throws(() => resolveSource('https://example.com/foo'), UnsupportedSourceError);
-  assert.throws(() => resolveSource('not a url'), UnsupportedSourceError);
+  assert.throws(() => resolveSource('not a url with spaces'), UnsupportedSourceError);
+  assert.throws(() => resolveSource('https://www.youtube.com/@somechannel'), UnsupportedSourceError);
 });
 
 // ─── Pattern classifier ──────────────────────────────────────────────────────
 test('classify snaps free text onto the nearest library entry', () => {
-  assert.equal(classify('a fun experiment i ran', SEED_PATTERNS), 'Experiment');
+  assert.equal(classify('this is a case study of a brand', SEED_PATTERNS), 'Case Study');
   assert.equal(classify('the biggest mistake people make', HOOK_PATTERNS), 'The biggest mistake');
   // Nothing close → fallback to first entry.
   assert.equal(classify('zzz totally unrelated qqq', SEED_PATTERNS), SEED_PATTERNS[0]);
