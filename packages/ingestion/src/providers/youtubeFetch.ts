@@ -30,33 +30,83 @@ export interface WatchData {
   captionTracks: CaptionTrack[];
 }
 
+const EMPTY_WATCH: WatchData = {
+  title: '', author: '', channelId: '', description: '',
+  viewCount: 0, lengthSeconds: 0, keywords: [], thumbnail: undefined, captionTracks: [],
+};
+
+/**
+ * Keyless oEmbed fallback — a light, public endpoint that survives datacenter
+ * IPs (Vercel) where the heavier InnerTube player call is blocked. Gives
+ * title / author / thumbnail (no views, no caption tracks).
+ */
+async function fetchOEmbed(videoId: string): Promise<Partial<WatchData>> {
+  try {
+    const url = `https://www.youtube.com/oembed?format=json&url=${encodeURIComponent(`https://www.youtube.com/watch?v=${videoId}`)}`;
+    const res = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+    if (!res.ok) return {};
+    const d: any = await res.json();
+    return {
+      title: d.title ?? '',
+      author: d.author_name ?? '',
+      thumbnail: d.thumbnail_url ?? `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
+    };
+  } catch {
+    return {};
+  }
+}
+
+/**
+ * Fetch video data. Tries the InnerTube WEB player first (rich: views, keywords,
+ * caption tracks). If that is blocked/empty — e.g. from a Vercel datacenter IP —
+ * falls back to keyless oEmbed for title/author/thumbnail. NEVER throws: returns
+ * best-effort data so the ingest always produces a usable entry.
+ */
 export async function fetchWatchData(videoId: string): Promise<WatchData> {
-  const res = await fetch(PLAYER_URL, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36',
-      'Accept-Language': 'en-US,en;q=0.9',
-    },
-    body: JSON.stringify({ context: WEB_CONTEXT, videoId }),
-  });
-  if (!res.ok) throw new Error(`YouTube InnerTube ${res.status}: ${(await res.text()).slice(0, 160)}`);
-  const data: any = await res.json();
+  let innertube: WatchData | null = null;
+  try {
+    const res = await fetch(PLAYER_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36',
+        'Accept-Language': 'en-US,en;q=0.9',
+      },
+      body: JSON.stringify({ context: WEB_CONTEXT, videoId }),
+    });
+    if (res.ok) {
+      const data: any = await res.json();
+      const vd = data.videoDetails ?? {};
+      const thumbs = vd.thumbnail?.thumbnails ?? [];
+      const tracks: CaptionTrack[] = data.captions?.playerCaptionsTracklistRenderer?.captionTracks ?? [];
+      if (vd.title || vd.viewCount) {
+        innertube = {
+          title: vd.title ?? '',
+          author: vd.author ?? '',
+          channelId: vd.channelId ?? '',
+          description: vd.shortDescription ?? '',
+          viewCount: Number(vd.viewCount ?? 0),
+          lengthSeconds: Number(vd.lengthSeconds ?? 0),
+          keywords: Array.isArray(vd.keywords) ? vd.keywords : [],
+          thumbnail: thumbs.length ? thumbs[thumbs.length - 1].url : undefined,
+          captionTracks: tracks.map((t) => ({ baseUrl: t.baseUrl, languageCode: t.languageCode, kind: (t as any).kind })),
+        };
+      }
+    }
+  } catch {
+    // InnerTube blocked (e.g. Vercel IP) → fall through to oEmbed.
+  }
 
-  const vd = data.videoDetails ?? {};
-  const thumbs = vd.thumbnail?.thumbnails ?? [];
-  const tracks: CaptionTrack[] = data.captions?.playerCaptionsTracklistRenderer?.captionTracks ?? [];
+  if (innertube && innertube.title) return innertube;
 
+  // Fallback: keyless oEmbed for the essentials so the card is never blank.
+  const oembed = await fetchOEmbed(videoId);
   return {
-    title: vd.title ?? '',
-    author: vd.author ?? '',
-    channelId: vd.channelId ?? '',
-    description: vd.shortDescription ?? '',
-    viewCount: Number(vd.viewCount ?? 0),
-    lengthSeconds: Number(vd.lengthSeconds ?? 0),
-    keywords: Array.isArray(vd.keywords) ? vd.keywords : [],
-    thumbnail: thumbs.length ? thumbs[thumbs.length - 1].url : undefined,
-    captionTracks: tracks.map((t) => ({ baseUrl: t.baseUrl, languageCode: t.languageCode, kind: (t as any).kind })),
+    ...EMPTY_WATCH,
+    ...(innertube ?? {}),
+    title: innertube?.title || oembed.title || '',
+    author: innertube?.author || oembed.author || '',
+    thumbnail: innertube?.thumbnail || oembed.thumbnail || `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
   };
 }
 

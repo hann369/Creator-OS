@@ -122,11 +122,11 @@ test('findDuplicate catches canonical-url and video-id matches', () => {
 // ─── Analysis validation + retry ───────────────────────────────────────────────
 test('parseAnalysis fills missing fields and snaps patterns', () => {
   const a = parseAnalysis(
-    JSON.stringify({ topic: 'AI Agents', hookPattern: 'the biggest mistake', seedPattern: 'experiment', confidence: 0.8 }),
+    JSON.stringify({ topic: 'AI Agents', hookPattern: 'the biggest mistake', seedPattern: 'case study', confidence: 0.8 }),
   );
   assert.equal(a.topic, 'AI Agents');
   assert.equal(a.hookPattern, 'The biggest mistake');
-  assert.equal(a.seedPattern, 'Experiment');
+  assert.equal(a.seedPattern, 'Case Study');
   assert.deepEqual(a.subTopics, []); // missing array → []
   assert.equal(a.audience, ''); // missing string → ''
 });

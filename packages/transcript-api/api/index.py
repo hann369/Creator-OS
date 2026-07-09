@@ -23,7 +23,7 @@ import os
 import re
 from urllib.parse import urlparse, parse_qs
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Header
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from youtube_transcript_api import YouTubeTranscriptApi, NoTranscriptFound, TranscriptsDisabled, VideoUnavailable
@@ -130,8 +130,8 @@ def health():
 
 
 @app.post("/transcript", response_model=TranscriptResponse)
-async def get_transcript(req: TranscriptRequest, authorization: str | None = None):
-    # Optional auth guard
+async def get_transcript(req: TranscriptRequest, authorization: str | None = Header(default=None)):
+    # Optional auth guard (reads the real Authorization header)
     if _API_SECRET:
         token = (authorization or "").removeprefix("Bearer ").strip()
         if token != _API_SECRET:
