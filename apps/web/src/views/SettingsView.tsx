@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Cpu, Server, Key, Brain, Shield, Send } from 'lucide-react';
 import { useTelegramLink } from '../hooks/useTelegramLink.js';
 
@@ -6,14 +6,80 @@ type SettingsTab = 'models' | 'providers' | 'memory' | 'mcp' | 'privacy' | 'conn
 
 export const SettingsView: React.FC = () => {
   const [activeTab, setActiveTab] = useState<SettingsTab>('models');
+  
+  // Real API key vault backed by localStorage
   const [apiKeys, setApiKeys] = useState<Record<string, string>>({
-    mistral: '••••••••••••••••••••••••',
-    openai: '',
-    gemini: ''
+    mistral: localStorage.getItem('pronoia_api_key_mistral') || '',
+    openai: localStorage.getItem('pronoia_api_key_openai') || '',
+    gemini: localStorage.getItem('pronoia_api_key_gemini') || '',
+    anthropic: localStorage.getItem('pronoia_api_key_anthropic') || '',
+    openrouter: localStorage.getItem('pronoia_api_key_openrouter') || ''
   });
 
-  const handleSaveKey = (provider: string) => {
-    alert(`[Secret Vault] Enqueued credentials rotation for provider: ${provider}. Key enrypted via AES-256-GCM successfully.`);
+  // Chat Sandbox State
+  const [chatMessages, setChatMessages] = useState<{ role: 'user' | 'assistant'; content: string }[]>([]);
+  const [chatInput, setChatInput] = useState('');
+  const [activeModel, setActiveModel] = useState<'mistral' | 'gemini'>('mistral');
+  const [chatLoading, setChatLoading] = useState(false);
+
+  const isGeminiAvailable = !!apiKeys.gemini;
+
+  // Auto-fallback to Mistral if Gemini key is deleted
+  useEffect(() => {
+    if (!isGeminiAvailable && activeModel === 'gemini') {
+      setActiveModel('mistral');
+    }
+  }, [isGeminiAvailable, activeModel]);
+
+  const getKeyName = (prov: string) => {
+    if (prov.includes('Mistral')) return 'mistral';
+    if (prov.includes('Gemini')) return 'gemini';
+    return prov.toLowerCase().replace(' ', '');
+  };
+
+  const handleSaveKey = (providerName: string) => {
+    const key = getKeyName(providerName);
+    localStorage.setItem(`pronoia_api_key_${key}`, apiKeys[key] || '');
+    alert(`Schlüssel für ${providerName} erfolgreich gespeichert!`);
+  };
+
+  const handleSendChat = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const query = chatInput.trim();
+    if (!query || chatLoading) return;
+
+    const userMsg = { role: 'user' as const, content: query };
+    const updatedMessages = [...chatMessages, userMsg];
+    setChatMessages(updatedMessages);
+    setChatInput('');
+    setChatLoading(true);
+
+    try {
+      const provider = activeModel;
+      const apiKey = apiKeys[provider];
+
+      const res = await fetch('/api/v1/reasoning/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          messages: updatedMessages,
+          provider,
+          apiKey
+        })
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || `Error ${res.status}`);
+      }
+
+      const data = await res.json();
+      setChatMessages(prev => [...prev, { role: 'assistant', content: data.content ?? '' }]);
+    } catch (err) {
+      setChatMessages(prev => [...prev, { role: 'assistant', content: `Fehler: ${err instanceof Error ? err.message : String(err)}` }]);
+    } finally {
+      setChatLoading(false);
+    }
   };
 
   return (
@@ -94,34 +160,136 @@ export const SettingsView: React.FC = () => {
               Secret Vault keys are encrypted client-side using AES-256-GCM.
             </p>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-              {['Mistral API', 'OpenAI', 'Google Gemini', 'Anthropic', 'OpenRouter'].map((prov) => (
-                <div key={prov} style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                  <label style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-primary)' }}>{prov} Key</label>
-                  <div style={{ display: 'flex', gap: '10px' }}>
-                    <input
-                      type="password"
-                      placeholder="Enter provider secret key"
-                      value={apiKeys[prov.toLowerCase().replace(' ', '')] || ''}
-                      onChange={(e) => {
-                        const val = e.target.value;
-                        setApiKeys(prev => ({ ...prev, [prov.toLowerCase().replace(' ', '')]: val }));
-                      }}
-                      style={{
-                        flexGrow: 1,
-                        border: '1px solid var(--border-color)',
-                        borderRadius: 'var(--radius-md)',
-                        padding: '10px 14px',
-                        fontSize: '14px',
-                        outline: 'none',
-                        fontFamily: 'var(--font-sans)'
-                      }}
-                    />
-                    <button className="btn-sage-primary" onClick={() => handleSaveKey(prov)}>
-                      Save Key
-                    </button>
+              {['Mistral API', 'OpenAI', 'Google Gemini', 'Anthropic', 'OpenRouter'].map((prov) => {
+                const keyName = getKeyName(prov);
+                return (
+                  <div key={prov} style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                    <label style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-primary)' }}>{prov} Key</label>
+                    <div style={{ display: 'flex', gap: '10px' }}>
+                      <input
+                        type="password"
+                        placeholder="Enter provider secret key"
+                        value={apiKeys[keyName] || ''}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setApiKeys(prev => ({ ...prev, [keyName]: val }));
+                        }}
+                        style={{
+                          flexGrow: 1,
+                          border: '1px solid var(--border-color)',
+                          borderRadius: 'var(--radius-md)',
+                          padding: '10px 14px',
+                          fontSize: '14px',
+                          outline: 'none',
+                          fontFamily: 'var(--font-sans)'
+                        }}
+                      />
+                      <button className="btn-sage-primary" onClick={() => handleSaveKey(prov)}>
+                        Save Key
+                      </button>
+                    </div>
                   </div>
+                );
+              })}
+            </div>
+
+            {/* Chat Sandbox */}
+            <div style={{ marginTop: '32px', borderTop: '1px solid var(--border-color)', paddingTop: '24px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
+                <Send size={16} color="var(--accent-color)" />
+                <h3 style={{ fontSize: '16px', fontWeight: 700, margin: 0 }}>AI Chat Sandbox</h3>
+              </div>
+              <p style={{ color: 'var(--text-secondary)', fontSize: '13px', marginBottom: '16px' }}>
+                Test your saved keys and API routes here. Choose between models.
+              </p>
+
+              <div style={{ border: '1px solid var(--border-color)', borderRadius: 'var(--radius-md)', padding: '16px', background: '#FCFCFD', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <span style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-primary)' }}>Select Model:</span>
+                  <select
+                    value={activeModel}
+                    onChange={(e) => setActiveModel(e.target.value as 'mistral' | 'gemini')}
+                    style={{
+                      border: '1px solid var(--border-color)',
+                      borderRadius: '8px',
+                      padding: '6px 12px',
+                      fontSize: '13px',
+                      outline: 'none',
+                      background: 'white'
+                    }}
+                  >
+                    <option value="mistral">Mistral (Default)</option>
+                    {isGeminiAvailable && <option value="gemini">Google Gemini (Active Key)</option>}
+                  </select>
+                  {!isGeminiAvailable && (
+                    <span style={{ fontSize: '11px', color: 'var(--text-secondary)', fontStyle: 'italic' }}>
+                      (Trage einen Gemini API-Key ein, um Gemini freizuschalten)
+                    </span>
+                  )}
                 </div>
-              ))}
+
+                {/* Chat logs */}
+                <div style={{ height: '180px', overflowY: 'auto', border: '1px solid var(--border-color)', borderRadius: '8px', background: 'white', padding: '12px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  {chatMessages.length === 0 ? (
+                    <div style={{ color: 'var(--text-secondary)', fontSize: '12px', textAlign: 'center', marginTop: '70px' }}>
+                      Schreibe eine Nachricht unten, um den Modell-Chat zu testen.
+                    </div>
+                  ) : (
+                    chatMessages.map((msg, i) => (
+                      <div key={i} style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                        <span style={{ fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', color: msg.role === 'user' ? 'var(--text-secondary)' : 'var(--accent-color)' }}>
+                          {msg.role === 'user' ? 'Du' : activeModel === 'gemini' ? 'Gemini 1.5 Flash' : 'Mistral Small'}
+                        </span>
+                        <div style={{ fontSize: '13px', color: 'var(--text-primary)', background: msg.role === 'user' ? 'rgba(0,0,0,0.02)' : 'var(--accent-light)', padding: '6px 10px', borderRadius: '6px', width: 'fit-content', maxWidth: '90%', whiteSpace: 'pre-wrap' }}>
+                          {msg.content}
+                        </div>
+                      </div>
+                    ))
+                  )}
+                  {chatLoading && (
+                    <div style={{ color: 'var(--text-secondary)', fontSize: '12px', fontFamily: 'var(--font-mono)' }}>
+                      KI generiert Antwort...
+                    </div>
+                  )}
+                </div>
+
+                {/* Chat input form */}
+                <form onSubmit={handleSendChat} style={{ display: 'flex', gap: '8px' }}>
+                  <input
+                    type="text"
+                    placeholder={chatLoading ? 'KI antwortet...' : 'Schreibe eine Testnachricht...'}
+                    value={chatInput}
+                    onChange={(e) => setChatInput(e.target.value)}
+                    disabled={chatLoading}
+                    style={{
+                      flexGrow: 1,
+                      border: '1px solid var(--border-color)',
+                      borderRadius: '8px',
+                      padding: '8px 12px',
+                      fontSize: '13px',
+                      outline: 'none'
+                    }}
+                  />
+                  <button
+                    type="submit"
+                    className="btn-sage-primary"
+                    disabled={chatLoading || !chatInput.trim()}
+                    style={{ padding: '8px 14px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                  >
+                    <Send size={14} />
+                  </button>
+                  {chatMessages.length > 0 && (
+                    <button
+                      type="button"
+                      className="btn-sage-secondary"
+                      onClick={() => setChatMessages([])}
+                      style={{ padding: '8px 12px', fontSize: '12px' }}
+                    >
+                      Clear
+                    </button>
+                  )}
+                </form>
+              </div>
             </div>
           </div>
         )}
