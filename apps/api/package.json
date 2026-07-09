@@ -15,11 +15,8 @@
     "@pronoia/cognition": "*",
     "@pronoia/domain": "*",
     "@pronoia/ingestion": "*",
-    "@pronoia/mcp": "*",
-    "@pronoia/sdk": "*",
     "@pronoia/services": "*",
     "@pronoia/shared": "*",
-    "@pronoia/workflow": "*",
     "@supabase/supabase-js": "^2.110.0",
     "express": "^4.19.2",
     "ws": "^8.17.0"
