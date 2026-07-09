@@ -115,8 +115,11 @@ export async function stripeWebhookHandler(req: Request, res: Response): Promise
         { id: uid('ent'), course_id: m.course_id, buyer_user_id: m.buyer_user_id, buyer_email: s.customer_email, source: 'purchase', order_id: m.order_id },
         { onConflict: 'course_id,buyer_user_id' },
       );
-      await supabaseAdmin.from('creator_earnings').insert(
+      // Idempotent on order_id: Stripe retries a delivery that timed out or
+      // answered non-2xx, and a retry must not credit the creator twice.
+      await supabaseAdmin.from('creator_earnings').upsert(
         { id: uid('earn'), owner_id: m.owner_id, course_id: m.course_id, order_id: m.order_id, gross_cents: gross, platform_fee_cents: fee, net_cents: gross - fee },
+        { onConflict: 'order_id' },
       );
     } catch (e) {
       console.error('[stripe webhook] fulfilment error', e);
