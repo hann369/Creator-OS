@@ -83,7 +83,7 @@ function persistRelsLocal(rels: Relationship[]) {
 }
 
 // ─── Moodboard Normalization & Serialization ──────────────────────────────────
-function normalizeBoard(raw: any): Moodboard {
+export function normalizeBoard(raw: any): Moodboard {
   const sections: MoodSection[] = Array.isArray(raw.sections) && raw.sections.length
     ? raw.sections.map((s: any) => ({
         id: s.id ?? uid('sec'),
@@ -156,7 +156,7 @@ function normalizeBoard(raw: any): Moodboard {
   };
 }
 
-function boardToRow(b: Moodboard) {
+export function boardToRow(b: Moodboard) {
   return {
     id: b.id,
     workspace_id: b.workspaceId,

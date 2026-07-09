@@ -1,7 +1,8 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useCallback } from 'react';
 import type { Moodboard, MoodboardItem, MoodSection, BoardType, BoardFonts, Ratio } from '@pronoia/domain';
-import { entityStore, loadBoardsLocal, persistBoardsLocal } from '../lib/entityStore.js';
+import { normalizeBoard, boardToRow } from '../lib/entityStore.js';
 import { getActiveWorkspaceId, isDefaultWorkspace } from '../lib/workspace.js';
+import { createCollection } from '../store/collection.js';
 
 export type MoodboardStatus = Moodboard['status'];
 
@@ -64,9 +65,14 @@ function templateSections(type: BoardType): MoodSection[] {
 }
 
 // ─── Seed: a Video Brand Deck matching the reference ─────────────────────────
-const SEED: Moodboard[] = [
+// The id is minted per seed run. It used to be the constant 'mb-video-brand',
+// but `moodboards.id` is a global primary key: the second account to sign up
+// collided with the first account's row, and the RLS update check
+// (auth.uid() = owner_id) then rejected the write, so their template never
+// persisted.
+const seedBoards = (): Moodboard[] => [
   {
-    id: 'mb-video-brand',
+    id: uid('mb'),
     workspaceId: getActiveWorkspaceId(),
     type: 'moodboard',
     boardType: 'video_brand_deck',
@@ -92,55 +98,22 @@ const SEED: Moodboard[] = [
   }
 ];
 
-// ─── Backward-compatible normalisation moved to entityStore ────────────────────
+// Backed by the shared entity collection (Roadmap Phase B): one module-level
+// store, so every view reading useMoodboards() sees the same boards. Row mapping
+// stays in the entityStore adapter rather than being duplicated here.
+const moodboards = createCollection<Moodboard>({
+  table: 'moodboards', lsKey: 'pronoia_moodboards', idOf: (b) => b.id,
+  fromRow: normalizeBoard, toRow: boardToRow, stampUpdatedAt: true,
+  // The demo board exists only in the default project.
+  seed: () => (isDefaultWorkspace() ? seedBoards() : []),
+});
 
 export function useMoodboards() {
-  const [boards, setBoards] = useState<Moodboard[]>(() => {
-    const local = loadBoardsLocal();
-    if (local.length > 0) return local;
-    return isDefaultWorkspace() ? SEED : []; // demo board only in the default project
-  });
-  const [isLoading, setIsLoading] = useState(true);
-
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const data = await entityStore.list<Moodboard>('moodboard', getActiveWorkspaceId());
-        if (!cancelled) {
-          if (data.length > 0) {
-            setBoards(data);
-          } else if (isDefaultWorkspace()) {
-            // Seed the demo board only in the default project.
-            for (const b of SEED) {
-              await entityStore.upsert(b);
-            }
-            setBoards(SEED);
-          } else {
-            setBoards([]);
-          }
-        }
-      } catch (err) {
-        console.warn('Failed to load moodboards from entityStore, keeping local:', err);
-      } finally {
-        if (!cancelled) {
-          setIsLoading(false);
-        }
-      }
-    })();
-    return () => { cancelled = true; };
-  }, []);
+  const boards = moodboards.useItems();
 
   const mutate = useCallback((id: string, fn: (b: Moodboard) => Moodboard) => {
-    setBoards(prev => {
-      const next = prev.map(b => b.id === id ? { ...fn(b), updatedAt: new Date() } : b);
-      persistBoardsLocal(next);
-      const updated = next.find(b => b.id === id);
-      if (updated) {
-        entityStore.upsert(updated).catch(err => console.warn('entityStore.upsert failed in mutate:', err));
-      }
-      return next;
-    });
+    const current = moodboards.getAll().find(b => b.id === id);
+    if (current) moodboards.update(id, fn(current));
   }, []);
 
   const createBoard = useCallback((title: string, boardType: BoardType = 'custom'): string => {
@@ -164,28 +137,21 @@ export function useMoodboards() {
       updatedAt: new Date(),
       metadata: {}
     };
-    setBoards(prev => { const next = [...prev, b]; persistBoardsLocal(next); return next; });
-    entityStore.upsert(b).catch(err => console.warn('entityStore.upsert failed in createBoard:', err));
+    moodboards.add(b);
     return b.id;
   }, []);
 
   const addMoodboard = useCallback((b: Moodboard) => {
-    setBoards(prev => {
-      if (prev.some(x => x.id === b.id)) return prev;
-      const next = [...prev, b];
-      persistBoardsLocal(next);
-      return next;
-    });
-    entityStore.upsert(b).catch(err => console.warn('entityStore.upsert failed in addMoodboard:', err));
+    if (moodboards.getAll().some(x => x.id === b.id)) return;
+    moodboards.add(b);
   }, []);
 
   const updateBoard = useCallback((id: string, patch: Partial<Moodboard>) => {
-    mutate(id, b => ({ ...b, ...patch }));
-  }, [mutate]);
+    moodboards.update(id, patch);
+  }, []);
 
   const deleteBoard = useCallback((id: string) => {
-    setBoards(prev => { const next = prev.filter(b => b.id !== id); persistBoardsLocal(next); return next; });
-    entityStore.remove(id).catch(err => console.warn('entityStore.remove failed in deleteBoard:', err));
+    moodboards.remove(id);
   }, []);
 
   const addSection = useCallback((boardId: string, title: string) => {
@@ -209,5 +175,5 @@ export function useMoodboards() {
     mutate(boardId, b => ({ ...b, sections: b.sections.map(s => s.id === sectionId ? { ...s, items: s.items.filter(i => i.id !== itemId) } : s) }));
   }, [mutate]);
 
-  return { boards, isLoading, createBoard, addMoodboard, updateBoard, deleteBoard, addSection, updateSection, deleteSection, addItem, deleteItem };
+  return { boards, createBoard, addMoodboard, updateBoard, deleteBoard, addSection, updateSection, deleteSection, addItem, deleteItem };
 }

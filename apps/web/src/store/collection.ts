@@ -23,6 +23,12 @@ export interface CollectionConfig<T> {
   toRow: (item: T) => any;
   /** Whether update() should stamp updatedAt (all current entity types have it). */
   stampUpdatedAt?: boolean;
+  /**
+   * Optional starter items, created once when the remote load succeeds and both
+   * the table and the local mirror are empty. Never overwrites existing data,
+   * so offline-created items survive a first successful sync.
+   */
+  seed?: () => T[];
 }
 
 export interface Collection<T> {
@@ -54,11 +60,23 @@ export function createCollection<T>(cfg: CollectionConfig<T>): Collection<T> {
     started = true;
     try {
       const r = await supabase.from(cfg.table).select('*').eq('workspace_id', getActiveWorkspaceId());
-      if (!r.error && r.data) {
-        const mapped = r.data.map(cfg.fromRow);
-        store.setState(mapped);
-        mirror(mapped);
+      if (r.error || !r.data) return;
+
+      if (r.data.length === 0 && cfg.seed && store.getState().length === 0) {
+        const seeded = cfg.seed();
+        if (seeded.length > 0) {
+          store.setState(seeded);
+          mirror(seeded);
+          for (const item of seeded) {
+            supabase.from(cfg.table).upsert(cfg.toRow(item), { onConflict: 'id' }).then(() => {}, () => {});
+          }
+          return;
+        }
       }
+
+      const mapped = r.data.map(cfg.fromRow);
+      store.setState(mapped);
+      mirror(mapped);
     } catch { /* offline → keep local */ }
   }
 
