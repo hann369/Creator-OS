@@ -176,9 +176,9 @@ export function makeCreatorProfileStore(ownerId: string): CreatorProfileStore {
 // worldModelRepo), so the transaction token is a no-op boundary.
 const noopTx: GraphTransaction = { async commit() {}, async rollback() {} };
 
-function nodeToRow(n: WorldNode) {
+function nodeToRow(n: WorldNode, ownerId: string) {
   return {
-    id: n.id, workspace_id: n.workspaceId, name: n.name, type: n.type,
+    id: n.id, workspace_id: n.workspaceId, owner_id: ownerId, name: n.name, type: n.type,
     description: n.description ?? null, confidence: n.confidence,
     lifecycle_state: n.lifecycleState, source_count: n.sourceCount, metadata: n.metadata ?? {},
   };
@@ -192,11 +192,11 @@ function rowToNode(r: any): WorldNode {
   };
 }
 
-export function makeGraphRepository(): GraphRepository {
+export function makeGraphRepository(ownerId: string): GraphRepository {
   return {
     async beginTransaction() { return noopTx; },
     async saveNode(node) {
-      const { error } = await supabaseAdmin.from('world_nodes').upsert(nodeToRow(node), { onConflict: 'id' });
+      const { error } = await supabaseAdmin.from('world_nodes').upsert(nodeToRow(node, ownerId), { onConflict: 'id' });
       if (error) throw error;
     },
     async findNode(id) {
@@ -213,7 +213,8 @@ export function makeGraphRepository(): GraphRepository {
     },
     async saveEdge(edge: WorldEdge) {
       const { error } = await supabaseAdmin.from('world_edges').upsert({
-        id: edge.id, workspace_id: edge.workspaceId, source_id: edge.sourceId, target_id: edge.targetId,
+        id: edge.id, workspace_id: edge.workspaceId, owner_id: ownerId,
+        source_id: edge.sourceId, target_id: edge.targetId,
         weight: edge.weight, relationship_type: edge.relationshipType, confidence: edge.confidence,
       }, { onConflict: 'id' });
       if (error) throw error;

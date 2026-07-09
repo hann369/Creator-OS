@@ -42,7 +42,7 @@ export async function processJob(job: Job): Promise<void> {
     provider,
     ai: mistral as unknown as ChatProvider,
     embed: (text: string) => (mistral as unknown as EmbeddingProvider).generateEmbedding(text),
-    graph: makeGraphRepository(),
+    graph: makeGraphRepository(job.ownerId),
     content: makeContentStore(job.ownerId),
     creators: makeCreatorProfileStore(job.ownerId),
     onStatus: (id, status: IngestionStatus) => console.log(`[ingestion] ${id} → ${status}`),
