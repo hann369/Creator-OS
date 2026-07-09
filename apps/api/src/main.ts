@@ -7,6 +7,7 @@ import { brandDnaRouter } from './controllers/brandDna.js';
 import { reasoningRouter } from './controllers/reasoning.js';
 import { socialRouter } from './controllers/social.js';
 import { telegramRouter } from './controllers/telegram.js';
+import { libraryRouter } from './controllers/library.js';
 import { coursesRouter, stripeWebhookHandler } from './controllers/courses.js';
 import { ThinkingWebSocketController } from './controllers/thinking.js';
 
@@ -25,6 +26,7 @@ app.use('/api/v1/brand-dna', brandDnaRouter);
 app.use('/api/v1/reasoning', reasoningRouter);
 app.use('/api/v1/social', socialRouter);
 app.use('/api/v1/telegram', telegramRouter);
+app.use('/api/v1/library', libraryRouter);
 app.use('/api/v1/courses', coursesRouter);
 
 const server = createServer(app);

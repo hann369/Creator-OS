@@ -4,6 +4,7 @@ import {
   ChatProvider,
   ReasoningProvider,
   VisionProvider,
+  EmbeddingProvider,
   ChatMessage,
   ReasoningResult,
 } from '../types.js';
@@ -20,10 +21,12 @@ import {
 // ─────────────────────────────────────────────────────────────────────────────
 
 const MISTRAL_URL = 'https://api.mistral.ai/v1/chat/completions';
+const MISTRAL_EMBED_URL = 'https://api.mistral.ai/v1/embeddings';
 
 export interface MistralLiveOptions {
   chatModel?: string;   // default: mistral-small-latest
   visionModel?: string; // default: pixtral-12b-2409
+  embedModel?: string;  // default: mistral-embed (1024 dims)
 }
 
 /** Best-effort mime sniff so Pixtral receives a correctly-typed data URI. */
@@ -35,19 +38,21 @@ function sniffMime(buf: Buffer): string {
   return 'image/jpeg';
 }
 
-export class MistralLiveProvider implements AIProvider, ChatProvider, ReasoningProvider, VisionProvider {
+export class MistralLiveProvider implements AIProvider, ChatProvider, ReasoningProvider, VisionProvider, EmbeddingProvider {
   id = 'mistral';
   name = 'Mistral (live)';
 
   private apiKey: string;
   private chatModel: string;
   private visionModel: string;
+  private embedModel: string;
 
   constructor(apiKey: string, opts: MistralLiveOptions = {}) {
     if (!apiKey) throw new Error('MistralLiveProvider requires an API key');
     this.apiKey = apiKey;
     this.chatModel = opts.chatModel ?? process.env.MISTRAL_CHAT_MODEL ?? 'mistral-small-latest';
     this.visionModel = opts.visionModel ?? process.env.MISTRAL_VISION_MODEL ?? 'pixtral-12b-2409';
+    this.embedModel = opts.embedModel ?? process.env.MISTRAL_EMBED_MODEL ?? 'mistral-embed';
   }
 
   initialize(_config: Record<string, any>): void {
@@ -133,5 +138,31 @@ export class MistralLiveProvider implements AIProvider, ChatProvider, ReasoningP
         },
       ],
     });
+  }
+
+  /** Real embeddings via Mistral's /v1/embeddings (mistral-embed → 1024 dims). */
+  async generateEmbedding(text: string): Promise<number[]> {
+    const [v] = await this.generateEmbeddings([text]);
+    return v;
+  }
+
+  async generateEmbeddings(texts: string[]): Promise<number[][]> {
+    if (texts.length === 0) return [];
+    // Mistral rejects empty strings; substitute a single space so indices align.
+    const input = texts.map((t) => (t && t.trim() ? t.slice(0, 8000) : ' '));
+    const res = await fetch(MISTRAL_EMBED_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${this.apiKey}` },
+      body: JSON.stringify({ model: this.embedModel, input }),
+    });
+    if (!res.ok) {
+      throw new Error(`Mistral embeddings ${res.status}: ${(await res.text()).slice(0, 200)}`);
+    }
+    const data: any = await res.json();
+    // Preserve request order via the `index` field.
+    return (data.data ?? [])
+      .slice()
+      .sort((a: any, b: any) => (a.index ?? 0) - (b.index ?? 0))
+      .map((d: any) => d.embedding as number[]);
   }
 }

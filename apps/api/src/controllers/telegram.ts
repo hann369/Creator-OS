@@ -1,6 +1,8 @@
 import { Router, type Request, type Response } from 'express';
 import { supabaseAdmin } from '../supabase.js';
 import { lookupEcosystemTelegramId } from '../ecosystem.js';
+import { resolveSource, UnsupportedSourceError } from '@pronoia/ingestion';
+import { enqueueIngestion } from '../queues/ingestionQueue.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Creator OS Telegram bot — a thin CLIENT of Pronoia Core (its own bot, separate
@@ -345,6 +347,34 @@ function cleanHtmlText(html: string): string {
     .replace(/<[^>]*>/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+// Phase 13: is this a URL the ingestion engine has a provider for (YouTube/IG)?
+function isContentSource(url: string): boolean {
+  try {
+    resolveSource(url);
+    return true;
+  } catch (err) {
+    if (err instanceof UnsupportedSourceError) return false;
+    return false;
+  }
+}
+
+// Route a video/reel link into the shared Content Intelligence pipeline. The bot
+// is just another ingestion source — same queue, same Library output as the web
+// import. Scoped to the sender's active project (or the default workspace).
+async function handleContentIngestion(link: Link, chatId: number, url: string): Promise<void> {
+  const workspaceId = link.active_project_id ?? DEFAULT_WORKSPACE;
+  try {
+    const source = resolveSource(url);
+    enqueueIngestion({ rawUrl: url, workspaceId, ownerId: link.owner_id });
+    await tgSend(
+      chatId,
+      `🎬 _Analysiere ${md(source.platform)}-Content…_\nHook, Pattern & Takeaways landen gleich in deiner *Library*.`,
+    );
+  } catch {
+    await tgSend(chatId, '❌ Konnte diese Quelle nicht verarbeiten.');
+  }
 }
 
 async function handleUrlIngestion(link: Link, chatId: number, url: string, rawText: string): Promise<void> {
@@ -802,6 +832,13 @@ async function processUpdate(update: any): Promise<void> {
     const urlMatch = trimmed.match(urlRegex);
     if (urlMatch && !trimmed.startsWith('/')) {
       const url = urlMatch[0];
+      // Phase 13: YouTube/Instagram links go into the Content Intelligence
+      // pipeline (transcript → analysis → Library + graph). Everything else
+      // falls through to the generic web-page → idea ingestion (B3).
+      if (isContentSource(url)) {
+        await handleContentIngestion(link, chatId, url);
+        return;
+      }
       await handleUrlIngestion(link, chatId, url, trimmed);
       return;
     }

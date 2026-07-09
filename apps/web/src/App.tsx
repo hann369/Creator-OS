@@ -13,6 +13,7 @@ import { IdentityView } from './views/IdentityView.js';
 import { IdeationView } from './views/IdeationView.js';
 import { GoalsView } from './views/GoalsView.js';
 import { DocumentsView } from './views/DocumentsView.js';
+import { LibraryView } from './views/LibraryView.js';
 import { AssetsView } from './views/AssetsView.js';
 import { PeopleView } from './views/PeopleView.js';
 import { CourseBuilderView } from './views/CourseBuilderView.js';
@@ -263,6 +264,8 @@ export const App: React.FC<AppProps> = ({ project, onExitProject }) => {
             <IdeationView />
           ) : resource === 'goals' ? (
             <GoalsView />
+          ) : resource === 'library' ? (
+            <LibraryView />
           ) : resource === 'documents' ? (
             <DocumentsView />
           ) : resource === 'assets' ? (

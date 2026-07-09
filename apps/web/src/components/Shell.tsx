@@ -1,11 +1,11 @@
 import React from 'react';
-import { Calendar, GitBranch, Brain, LayoutGrid, FileText, Package, Users, Target, Search, ChevronLeft, Fingerprint, Lightbulb, LogOut, Menu, GraduationCap } from 'lucide-react';
+import { Calendar, GitBranch, Brain, LayoutGrid, FileText, Package, Users, Target, Search, ChevronLeft, Fingerprint, Lightbulb, LogOut, Menu, GraduationCap, Library } from 'lucide-react';
 import { useAuth } from '../context/AuthContext.js';
 import { useGoals } from '../hooks/useGoals.js';
 import { userInitial } from '../lib/user.js';
 
 export type WorkspaceTab = 'morning' | 'pipeline' | 'brain';
-export type ResourceView = 'ideation' | 'moodboards' | 'identity' | 'documents' | 'assets' | 'people' | 'goals' | 'courses';
+export type ResourceView = 'ideation' | 'moodboards' | 'identity' | 'documents' | 'assets' | 'people' | 'goals' | 'courses' | 'library';
 
 export const SIDEBAR_W = 224;
 export const TOPBAR_H = 52;
@@ -18,6 +18,7 @@ const WORKSPACE: { tab: WorkspaceTab; label: string; icon: React.ReactNode }[] =
 
 const RESOURCES: { res: ResourceView; label: string; icon: React.ReactNode }[] = [
   { res: 'ideation', label: 'Ideation', icon: <Lightbulb size={15} /> },
+  { res: 'library', label: 'Library', icon: <Library size={15} /> },
   { res: 'documents', label: 'Documents', icon: <FileText size={15} /> },
   { res: 'moodboards', label: 'Moodboards', icon: <LayoutGrid size={15} /> },
   { res: 'identity', label: 'Identity', icon: <Fingerprint size={15} /> },

@@ -484,3 +484,7 @@ body {
 .editor-block:hover .editor-block-handle {
   opacity: 0.4;
 }
+
+/* Spinner used by the Library ingest button / pending cards. */
+@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+.spin { animation: spin 0.9s linear infinite; }

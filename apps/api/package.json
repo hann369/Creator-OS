@@ -14,6 +14,7 @@
     "@pronoia/brain": "*",
     "@pronoia/cognition": "*",
     "@pronoia/domain": "*",
+    "@pronoia/ingestion": "*",
     "@pronoia/mcp": "*",
     "@pronoia/sdk": "*",
     "@pronoia/services": "*",

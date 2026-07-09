@@ -1,0 +1,20 @@
+{
+  "version": 2,
+  "builds": [
+    {
+      "src": "api/index.py",
+      "use": "@vercel/python",
+      "config": { "maxLambdaSize": "50mb" }
+    },
+    {
+      "src": "api/test.py",
+      "use": "@vercel/python",
+      "config": { "maxLambdaSize": "50mb" }
+    }
+  ],
+  "routes": [
+    { "src": "/test", "dest": "api/test.py" },
+    { "src": "/test/(.*)", "dest": "api/test.py" },
+    { "src": "/(.*)", "dest": "api/index.py" }
+  ]
+}
