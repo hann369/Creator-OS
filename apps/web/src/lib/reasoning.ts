@@ -1,6 +1,7 @@
 import type { ChatMessage, ReasoningResult } from '@pronoia/ai';
 import type { WorldNode, WorldEdge } from '@pronoia/domain';
 import type { ExtendedContentPipeline } from '../context/WorkspaceContext.js';
+import { EDITING_CODEX } from './editingCodex.js';
 
 // ─── Reasoning via server-side proxy ─────────────────────────────────────────
 // The Mistral key lives ONLY on the API server (apps/api/src/controllers/
@@ -106,6 +107,20 @@ Antworte ausschließlich als JSON mit exakt diesen Feldern:
 export async function reason(query: string, ctx: ReasoningContext): Promise<ReasoningResponse> {
   const { contextNodes, contextCards } = retrieve(query, ctx);
 
+  // Retrieve matching items from Editing Codex (Theory)
+  const terms = query.toLowerCase().split(/\W+/).filter(t => t.length > 2);
+  const score = (text: string) => {
+    const t = text.toLowerCase();
+    return terms.reduce((s, term) => s + (t.includes(term) ? 1 : 0), 0);
+  };
+
+  const contextCodex = EDITING_CODEX
+    .map(c => ({ c, s: score(`${c.title} ${c.category} ${c.content} ${c.tags.join(' ')}`) }))
+    .filter(x => x.s > 0)
+    .sort((a, b) => b.s - a.s)
+    .slice(0, 3)
+    .map(x => x.c);
+
   const nodeLines = contextNodes
     .map(n => `- [${n.type}] ${n.name}: ${n.description ?? ''} (Zustand: ${n.lifecycleState})`)
     .join('\n');
@@ -125,12 +140,17 @@ export async function reason(query: string, ctx: ReasoningContext): Promise<Reas
     .map(c => `- "${c.title}" [${c.status}, ${c.format}] Trend ${c.trendScore ?? '?'} · Priorität ${c.executivePriority ?? '?'}`)
     .join('\n');
 
+  const codexLines = contextCodex
+    .map(c => `- [${c.category}] ${c.title}: ${c.content}`)
+    .join('\n');
+
   const user: ChatMessage = {
     role: 'user',
     content:
       `WISSENSGRAPH — KNOTEN:\n${nodeLines || '(keine relevanten Knoten)'}\n\n` +
       `BEZIEHUNGEN:\n${edgeLines || '(keine)'}\n\n` +
       `CONTENT-PIPELINE:\n${cardLines || '(keine relevanten Karten)'}\n\n` +
+      `EDITING PLAYBOOK / THEORY:\n${codexLines || '(keine relevanten Richtlinien)'}\n\n` +
       `FRAGE DES NUTZERS: ${query}`
   };
 
@@ -151,7 +171,11 @@ export async function reason(query: string, ctx: ReasoningContext): Promise<Reas
     result = { observation: '', hypotheses: [], evidence: [], conclusion: raw, recommendations: [], confidence: 0.5 };
   }
 
-  const used = [...contextNodes.map(n => n.name), ...contextCards.map(c => c.title)];
+  const used = [
+    ...contextNodes.map(n => n.name),
+    ...contextCards.map(c => c.title),
+    ...contextCodex.map(c => c.title)
+  ];
   return { result, used };
 }
 

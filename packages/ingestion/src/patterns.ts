@@ -8,16 +8,14 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 export const HOOK_PATTERNS = [
-  'Nobody talks about',
-  'Stop doing this',
-  'The biggest mistake',
-  'I tested',
-  'The truth about',
-  'What if',
+  'Secret Reveal',
+  'Fortuneteller',
+  'Comparison',
+  'Educational/Tutorial',
+  'Raw Shock',
+  'Contrarian/Negative',
   'Question',
-  'Bold claim',
-  'Direct address',
-  'Story open',
+  'Experimentation',
 ] as const;
 
 export const SEED_PATTERNS = [

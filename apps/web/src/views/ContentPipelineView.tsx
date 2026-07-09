@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Play, TrendingUp, Plus, X, AlignLeft, Trash2, Youtube, Twitter, Instagram, CheckSquare, Paperclip, Copy, Target, Braces, Share2, Network, Palette } from 'lucide-react';
+import { Play, TrendingUp, Plus, X, AlignLeft, Trash2, Youtube, Twitter, Instagram, CheckSquare, Paperclip, Copy, Target, Braces, Share2, Network, Palette, Download } from 'lucide-react';
 import { useWorkspace } from '../context/WorkspaceContext.js';
 import { useRelationships } from '../hooks/useRelationships.js';
 import { useMoodboards } from '../hooks/useMoodboards.js';
@@ -221,6 +221,27 @@ export const ContentPipelineView: React.FC<ContentPipelineViewProps> = ({ onOpen
     };
     updateCard(cardId, { comments: [...currentComments, newComment] });
     setNewCommentText('');
+  };
+
+  const handleExportMarkdown = (card: typeof pipelineCards[number]) => {
+    const title = card.title || 'Draft';
+    const hookText = card.hook ? `> **Hook:** ${card.hook}\n\n` : '';
+    const bodyText = card.markdown || '';
+    const markdownContent = `# ${title}\n\n${hookText}${bodyText}`;
+
+    const blob = new Blob([markdownContent], { type: 'text/markdown;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    const safeFilename = title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || 'script';
+
+    link.href = url;
+    link.setAttribute('download', `${safeFilename}.md`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+
+    addActivityLog(`Exported script "${title}" as ${safeFilename}.md`);
   };
 
   // Context menu actions
@@ -470,7 +491,17 @@ export const ContentPipelineView: React.FC<ContentPipelineViewProps> = ({ onOpen
                   )}
 
                   <div>
-                    <h4 style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '8px' }}>Document</h4>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                      <h4 style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-primary)', margin: 0 }}>Document</h4>
+                      <button
+                        className="btn-sage-secondary"
+                        onClick={() => handleExportMarkdown(selectedItem)}
+                        style={{ padding: '4px 10px', fontSize: '10px', display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer' }}
+                        title="Als Markdown-Datei (.md) exportieren"
+                      >
+                        <Download size={11} /> Export .md
+                      </button>
+                    </div>
                     <textarea
                       value={selectedItem.markdown || ''}
                       onChange={(e) => updateCard(selectedItem.id, { markdown: e.target.value })}
@@ -624,6 +655,9 @@ export const ContentPipelineView: React.FC<ContentPipelineViewProps> = ({ onOpen
                 <button className="btn-sage-primary" onClick={() => onOpenEditor(selectedItem.id, selectedItem.title)} style={{ width: '100%', padding: '12px', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px' }}>
                   <Play size={12} fill="white" /> Open Fullscreen Focus
                 </button>
+                <button className="btn-sage-secondary" onClick={() => handleExportMarkdown(selectedItem)} style={{ width: '100%', padding: '10px', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px', marginTop: '8px' }}>
+                  <Download size={12} /> Export .md File
+                </button>
                 <button className="btn-sage-secondary" onClick={() => { deleteCard(selectedItem.id); setSelectedItemId(null); }} style={{ width: '100%', border: '1px solid #fda4af', color: '#b91c1c', background: 'transparent', padding: '10px', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px', marginTop: '8px' }}>
                   <Trash2 size={12} /> Archive Draft
                 </button>
@@ -641,6 +675,11 @@ export const ContentPipelineView: React.FC<ContentPipelineViewProps> = ({ onOpen
             {[
               { icon: <AlignLeft size={13} />, label: 'Open workspace', fn: () => setSelectedItemId(ctxMenu.cardId) },
               { icon: <Copy size={13} />, label: 'Duplicate', fn: () => duplicateCard(ctxMenu.cardId) },
+              { icon: <Download size={13} />, label: 'Export as .md', fn: () => {
+                  const card = pipelineCards.find(c => c.id === ctxMenu.cardId);
+                  if (card) handleExportMarkdown(card);
+                } 
+              },
               { icon: <Target size={13} />, label: 'Convert to Goal', fn: () => promoteCardToNode(ctxMenu.cardId, 'goal') },
               { icon: <Braces size={13} />, label: 'Convert to Concept', fn: () => promoteCardToNode(ctxMenu.cardId, 'concept') },
               { icon: <Share2 size={13} />, label: 'Convert to Research', fn: () => promoteCardToNode(ctxMenu.cardId, 'insight') }

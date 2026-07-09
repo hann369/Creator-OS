@@ -3,6 +3,7 @@ import { Library, Search, Plus, TrendingUp, Sparkles, RefreshCw, Loader2, Trash2
 import { useLibrary, type LibEntry } from '../hooks/useLibrary.js';
 import { useHookDatabase, type HookEntry } from '../hooks/useHookDatabase.js';
 import { useIsMobile } from '../hooks/useIsMobile.js';
+import { EDITING_CODEX, type CodexEntry } from '../lib/editingCodex.js';
 
 const inputStyle: React.CSSProperties = { fontSize: '13px', border: '1px solid var(--border-color)', padding: '9px 12px', borderRadius: '8px', outline: 'none', background: 'transparent', width: '100%', boxSizing: 'border-box' };
 const chip: React.CSSProperties = { fontSize: '10px', fontFamily: 'var(--font-mono)', padding: '2px 7px', borderRadius: '6px', border: '1px solid var(--border-color)', color: 'var(--text-secondary)', whiteSpace: 'nowrap' };
@@ -27,7 +28,7 @@ export const LibraryView: React.FC = () => {
   const { entries: hookEntries, loading: hooksLoading } = useHookDatabase();
   const isMobile = useIsMobile();
 
-  const [activeTab, setActiveTab] = useState<'videos' | 'hooks'>('videos');
+  const [activeTab, setActiveTab] = useState<'videos' | 'hooks' | 'codex'>('videos');
   const [url, setUrl] = useState('');
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
@@ -35,6 +36,7 @@ export const LibraryView: React.FC = () => {
   // Selection states
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [selectedHookId, setSelectedHookId] = useState<string | null>(null);
+  const [selectedCodexId, setSelectedCodexId] = useState<string | null>(null);
 
   // Video Filters
   const [q, setQ] = useState('');
@@ -49,6 +51,10 @@ export const LibraryView: React.FC = () => {
   const [hNiche, setHNiche] = useState('');
   const [hType, setHType] = useState('');
 
+  // Codex Filters
+  const [cq, setCq] = useState('');
+  const [cCategory, setCCategory] = useState('');
+
   const hooks = useMemo(() => uniq(entries.map((e) => e.analysis?.hookPattern)), [entries]);
   const seeds = useMemo(() => uniq(entries.map((e) => e.analysis?.seedPattern)), [entries]);
   const mechs = useMemo(() => uniq(entries.map((e) => e.analysis?.mechanism)), [entries]);
@@ -57,6 +63,8 @@ export const LibraryView: React.FC = () => {
   const hookStructures = useMemo(() => uniq(hookEntries.map((e) => e.spoken_hook_structure)), [hookEntries]);
   const hookNiches = useMemo(() => uniq(hookEntries.map((e) => e.niche)), [hookEntries]);
   const hookTypes = useMemo(() => uniq(hookEntries.map((e) => e.content_type)), [hookEntries]);
+
+  const codexCategories = useMemo(() => uniq(EDITING_CODEX.map((e) => e.category)), []);
 
   // Filtered lists
   const filtered = useMemo(() => entries.filter((e) => {
@@ -82,8 +90,18 @@ export const LibraryView: React.FC = () => {
     return true;
   }), [hookEntries, hStructure, hNiche, hType, hq]);
 
+  const filteredCodex = useMemo(() => EDITING_CODEX.filter((e) => {
+    if (cCategory && e.category !== cCategory) return false;
+    if (cq) {
+      const hay = `${e.title} ${e.content} ${e.tags.join(' ')} ${e.category}`.toLowerCase();
+      if (!hay.includes(cq.toLowerCase())) return false;
+    }
+    return true;
+  }), [cq, cCategory]);
+
   const selected = entries.find((e) => e.id === selectedId) ?? null;
   const selectedHook = hookEntries.find((e) => e.id === selectedHookId) ?? null;
+  const selectedCodex = EDITING_CODEX.find((e) => e.id === selectedCodexId) ?? null;
 
   const doIngest = async () => {
     if (!url.trim() || busy) return;
@@ -110,23 +128,23 @@ export const LibraryView: React.FC = () => {
     }
   };
 
-  const showDetailPanel = !isMobile && (activeTab === 'videos' ? selected !== null : selectedHook !== null);
+  const showDetailPanel = !isMobile && (activeTab === 'videos' ? selected !== null : activeTab === 'hooks' ? selectedHook !== null : selectedCodex !== null);
 
   return (
     <div className="view-body" style={{ maxWidth: '1180px', margin: '0 auto', padding: '40px 24px 120px' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '6px' }}>
         <Library size={20} color="var(--accent-color)" />
         <h1 className="title-serif" style={{ fontSize: '34px', color: 'var(--text-primary)', margin: 0 }}>Library</h1>
-        <button title="Refresh" onClick={() => activeTab === 'videos' ? refresh() : refresh()} style={{ ...chip, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', marginLeft: 'auto' }}>
+        <button title="Refresh" onClick={() => refresh()} style={{ ...chip, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', marginLeft: 'auto' }}>
           <RefreshCw size={11} /> Refresh
         </button>
       </div>
       <p style={{ fontSize: '13px', color: 'var(--text-secondary)', margin: '0 0 24px', lineHeight: 1.6 }}>
-        Deine Content-Intelligence-Datenbank. Analysiere virale Kurzvideos oder greife auf die Kallaway Hook-Lego-Bricks-Datenbank zu.
+        Deine Content-Intelligence-Datenbank. Analysiere virale Kurzvideos, greife auf die Kallaway Hook-Lego-Bricks-Datenbank zu oder schaue in den Editing Codex.
       </p>
 
       {/* Tab Switcher */}
-      <div style={{ display: 'flex', gap: '8px', marginBottom: '24px', borderBottom: '1px solid var(--border-color)' }}>
+      <div style={{ display: 'flex', gap: '8px', marginBottom: '24px', borderBottom: '1px solid var(--border-color)', flexWrap: 'wrap' }}>
         <button
           onClick={() => { setActiveTab('videos'); }}
           style={{
@@ -161,6 +179,25 @@ export const LibraryView: React.FC = () => {
           }}
         >
           <Database size={13} /> Hook-Templates (Lego-Bricks)
+        </button>
+        <button
+          onClick={() => { setActiveTab('codex'); }}
+          style={{
+            background: 'transparent',
+            border: 'none',
+            borderBottom: activeTab === 'codex' ? '2.5px solid var(--accent-color)' : 'none',
+            color: activeTab === 'codex' ? 'var(--text-primary)' : 'var(--text-secondary)',
+            padding: '8px 16px',
+            fontSize: '13px',
+            fontWeight: 600,
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '6px',
+            transition: 'all 0.15s ease'
+          }}
+        >
+          <Sparkles size={13} /> Editing Codex (Playbook)
         </button>
       </div>
 
@@ -197,7 +234,7 @@ export const LibraryView: React.FC = () => {
                 <FilterSelect title="Format (Seed Pattern)" value={seed} onChange={setSeed} options={seeds} />
                 <FilterSelect title="Mechanism" value={mechanism} onChange={setMechanism} options={mechs} />
               </>
-            ) : (
+            ) : activeTab === 'hooks' ? (
               <>
                 <div>
                   <div style={label}>Search</div>
@@ -209,6 +246,17 @@ export const LibraryView: React.FC = () => {
                 <FilterSelect title="Hook Structure" value={hStructure} onChange={setHStructure} options={hookStructures} />
                 <FilterSelect title="Niche" value={hNiche} onChange={setHNiche} options={hookNiches} />
                 <FilterSelect title="Content Type" value={hType} onChange={setHType} options={hookTypes} />
+              </>
+            ) : (
+              <>
+                <div>
+                  <div style={label}>Search</div>
+                  <div style={{ position: 'relative' }}>
+                    <Search size={13} style={{ position: 'absolute', left: '9px', top: '10px', color: 'var(--text-secondary)' }} />
+                    <input style={{ ...inputStyle, paddingLeft: '28px' }} placeholder="codex keyword…" value={cq} onChange={(e) => setCq(e.target.value)} />
+                  </div>
+                </div>
+                <FilterSelect title="Category" value={cCategory} onChange={setCCategory} options={codexCategories} />
               </>
             )}
           </div>
@@ -228,7 +276,7 @@ export const LibraryView: React.FC = () => {
                 {filtered.map((e) => <Card key={e.id} entry={e} active={e.id === selectedId} onClick={() => setSelectedId(selectedId === e.id ? null : e.id)} />)}
               </div>
             )
-          ) : (
+          ) : activeTab === 'hooks' ? (
             hooksLoading ? (
               <div style={{ textAlign: 'center', padding: '60px 0', color: 'var(--text-secondary)', fontSize: '13px' }}>Lade Hook-Datenbank…</div>
             ) : filteredHooks.length === 0 ? (
@@ -243,6 +291,23 @@ export const LibraryView: React.FC = () => {
                     entry={e}
                     active={e.id === selectedHookId}
                     onClick={() => setSelectedHookId(selectedHookId === e.id ? null : e.id)}
+                  />
+                ))}
+              </div>
+            )
+          ) : (
+            filteredCodex.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: '60px 0', fontSize: '13px', color: 'var(--text-secondary)', opacity: 0.7 }}>
+                Keine passenden Codex-Einträge gefunden.
+              </div>
+            ) : (
+              <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(auto-fill, minmax(220px, 1fr))', gap: '14px' }}>
+                {filteredCodex.map((e) => (
+                  <CodexCard
+                    key={e.id}
+                    entry={e}
+                    active={e.id === selectedCodexId}
+                    onClick={() => setSelectedCodexId(selectedCodexId === e.id ? null : e.id)}
                   />
                 ))}
               </div>
@@ -262,6 +327,12 @@ export const LibraryView: React.FC = () => {
             <HookDetailPanel entry={selectedHook} onClose={() => setSelectedHookId(null)} />
           </div>
         )}
+
+        {!isMobile && activeTab === 'codex' && selectedCodex && (
+          <div style={{ position: 'sticky', top: '80px' }}>
+            <CodexDetailPanel entry={selectedCodex} onClose={() => setSelectedCodexId(null)} />
+          </div>
+        )}
       </div>
     </div>
   );
@@ -279,8 +350,50 @@ const FilterSelect: React.FC<{ title: string; value: string; onChange: (v: strin
 
 const Card: React.FC<{ entry: LibEntry; active: boolean; onClick: () => void }> = ({ entry, active, onClick }) => {
   const pending = entry.status !== 'completed' && entry.status !== 'failed';
+
+  const getCardStyle = (): React.CSSProperties => {
+    const isYt = entry.platform === 'youtube';
+    const isIg = entry.platform === 'instagram';
+
+    const base: React.CSSProperties = {
+      borderRadius: '12px',
+      overflow: 'hidden',
+      cursor: 'pointer',
+      transition: 'all 0.2s ease',
+      boxSizing: 'border-box'
+    };
+
+    if (isYt) {
+      return {
+        ...base,
+        background: active ? 'var(--accent-light)' : 'rgba(0,0,0,0.015)',
+        border: active ? '2.5px solid #ef4444' : '2.5px solid rgba(239, 68, 68, 0.25)',
+        boxShadow: active ? '0 0 10px rgba(239, 68, 68, 0.25)' : 'none'
+      };
+    }
+
+    if (isIg) {
+      return {
+        ...base,
+        border: '2.5px solid transparent',
+        backgroundImage: active
+          ? 'linear-gradient(var(--accent-light, #f0fdf4), var(--accent-light, #f0fdf4)), linear-gradient(135deg, #fcd34d, #d946ef, #a21caf)'
+          : 'linear-gradient(#fafafa, #fafafa), linear-gradient(135deg, rgba(252, 211, 77, 0.4), rgba(217, 70, 239, 0.4), rgba(162, 28, 175, 0.4))',
+        backgroundOrigin: 'border-box',
+        backgroundClip: 'padding-box, border-box',
+        boxShadow: active ? '0 0 10px rgba(162, 28, 175, 0.25)' : 'none'
+      };
+    }
+
+    return {
+      ...base,
+      background: active ? 'var(--accent-light)' : 'rgba(0,0,0,0.015)',
+      border: active ? '2.5px solid var(--accent-color)' : '1px solid var(--border-color)'
+    };
+  };
+
   return (
-    <div onClick={onClick} style={{ border: '1px solid var(--border-color)', borderRadius: '12px', overflow: 'hidden', cursor: 'pointer', background: active ? 'var(--accent-light)' : 'rgba(0,0,0,0.015)', transition: 'all 0.2s ease' }}>
+    <div onClick={onClick} style={getCardStyle()}>
       <div style={{ aspectRatio: '16/9', background: 'rgba(0,0,0,0.06)', backgroundImage: entry.thumbnail ? `url(${entry.thumbnail})` : undefined, backgroundSize: 'cover', backgroundPosition: 'center', position: 'relative' }}>
         {entry.outlier && entry.outlier.label !== 'Normal' && (
           <span style={{ position: 'absolute', top: '6px', left: '6px', ...chip, background: 'var(--bg-primary, #fff)', color: outlierColor(entry.outlier.label), borderColor: outlierColor(entry.outlier.label), display: 'flex', alignItems: 'center', gap: '3px' }}>
@@ -326,6 +439,25 @@ const HookCard: React.FC<{ entry: HookEntry; active: boolean; onClick: () => voi
         {entry.niche && <span style={chip}>{entry.niche}</span>}
         {entry.content_type && <span style={chip}>{entry.content_type}</span>}
         {entry.performance && <span style={{ ...chip, color: 'var(--accent-color)' }}>Rank #{entry.performance}</span>}
+      </div>
+    </div>
+  );
+};
+
+const CodexCard: React.FC<{ entry: CodexEntry; active: boolean; onClick: () => void }> = ({ entry, active, onClick }) => {
+  return (
+    <div onClick={onClick} style={{ border: '1px solid var(--border-color)', borderRadius: '12px', padding: '12px', cursor: 'pointer', background: active ? 'var(--accent-light)' : 'rgba(0,0,0,0.015)', display: 'flex', flexDirection: 'column', gap: '8px', transition: 'all 0.2s ease', height: '100%', boxSizing: 'border-box' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '6px' }}>
+        <span style={{ ...chip, background: 'var(--accent-light)', borderColor: 'var(--accent-color)', color: 'var(--accent-color)', fontWeight: 600 }}>{entry.category}</span>
+      </div>
+      <div style={{ fontSize: '12.5px', fontWeight: 700, color: 'var(--text-primary)', lineHeight: 1.35 }}>
+        {entry.title}
+      </div>
+      <div style={{ fontSize: '11.5px', color: 'var(--text-secondary)', lineHeight: 1.45, flexGrow: 1, display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+        {entry.content}
+      </div>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginTop: '4px' }}>
+        {entry.tags.map(t => <span key={t} style={chip}>#{t}</span>)}
       </div>
     </div>
   );
@@ -470,6 +602,42 @@ const HookDetailPanel: React.FC<{ entry: HookEntry; onClose: () => void }> = ({ 
           </a>
         )}
       </div>
+    </div>
+  );
+};
+
+const CodexDetailPanel: React.FC<{ entry: CodexEntry; onClose: () => void }> = ({ entry, onClose }) => {
+  return (
+    <div style={{ background: 'rgba(0,0,0,0.015)', border: '1px solid var(--border-color)', borderRadius: '14px', padding: '18px', maxHeight: 'calc(100vh - 120px)', overflowY: 'auto' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '14px' }}>
+        <Sparkles size={14} color="var(--accent-color)" />
+        <span style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-primary)' }}>Codex Rule Details</span>
+        <button onClick={onClose} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)', padding: '2px', display: 'flex', alignItems: 'center', marginLeft: 'auto' }}>
+          <X size={14} />
+        </button>
+      </div>
+
+      <Section title="Category">
+        <span style={{ ...chip, background: 'var(--accent-light)', borderColor: 'var(--accent-color)', color: 'var(--accent-color)', fontWeight: 600 }}>{entry.category}</span>
+      </Section>
+
+      <Section title="Rule / Principle">
+        <div style={{ fontSize: '14px', fontWeight: 700, color: 'var(--text-primary)', lineHeight: 1.35, marginBottom: '8px' }}>
+          {entry.title}
+        </div>
+      </Section>
+
+      <Section title="Description & Application">
+        <div style={{ color: 'var(--text-primary)', fontSize: '12.5px', lineHeight: '1.6', whiteSpace: 'pre-wrap', background: 'white', border: '1px solid var(--border-color)', borderRadius: '8px', padding: '12px' }}>
+          {entry.content}
+        </div>
+      </Section>
+
+      <Section title="Keywords / Tags">
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px' }}>
+          {entry.tags.map(t => <span key={t} style={chip}>#{t}</span>)}
+        </div>
+      </Section>
     </div>
   );
 };

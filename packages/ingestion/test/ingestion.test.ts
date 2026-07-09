@@ -67,7 +67,7 @@ test('resolver throws on unsupported URLs', () => {
 // ─── Pattern classifier ──────────────────────────────────────────────────────
 test('classify snaps free text onto the nearest library entry', () => {
   assert.equal(classify('this is a case study of a brand', SEED_PATTERNS), 'Case Study');
-  assert.equal(classify('the biggest mistake people make', HOOK_PATTERNS), 'The biggest mistake');
+  assert.equal(classify('this is a raw shock statement', HOOK_PATTERNS), 'Raw Shock');
   // Nothing close → fallback to first entry.
   assert.equal(classify('zzz totally unrelated qqq', SEED_PATTERNS), SEED_PATTERNS[0]);
 });
@@ -122,10 +122,10 @@ test('findDuplicate catches canonical-url and video-id matches', () => {
 // ─── Analysis validation + retry ───────────────────────────────────────────────
 test('parseAnalysis fills missing fields and snaps patterns', () => {
   const a = parseAnalysis(
-    JSON.stringify({ topic: 'AI Agents', hookPattern: 'the biggest mistake', seedPattern: 'case study', confidence: 0.8 }),
+    JSON.stringify({ topic: 'AI Agents', hookPattern: 'secret reveal', seedPattern: 'case study', confidence: 0.8 }),
   );
   assert.equal(a.topic, 'AI Agents');
-  assert.equal(a.hookPattern, 'The biggest mistake');
+  assert.equal(a.hookPattern, 'Secret Reveal');
   assert.equal(a.seedPattern, 'Case Study');
   assert.deepEqual(a.subTopics, []); // missing array → []
   assert.equal(a.audience, ''); // missing string → ''
@@ -141,7 +141,7 @@ test('analyzeContent retries once when first response is invalid', async () => {
     async generateChat(_m: ChatMessage[]) {
       calls++;
       if (calls === 1) return 'not json at all';
-      return JSON.stringify({ topic: 'Barefoot Running', hookPattern: 'I tested', seedPattern: 'experiment', confidence: 0.9 });
+      return JSON.stringify({ topic: 'Barefoot Running', hookPattern: 'Experimentation', seedPattern: 'experiment', confidence: 0.9 });
     },
     async *generateChatStream() {
       yield { text: '', done: true };
@@ -155,5 +155,5 @@ test('analyzeContent retries once when first response is invalid', async () => {
   const result = await analyzeContent(entry, flaky);
   assert.equal(calls, 2); // first failed, retried
   assert.equal(result.topic, 'Barefoot Running');
-  assert.equal(result.hookPattern, 'I tested');
+  assert.equal(result.hookPattern, 'Experimentation');
 });
