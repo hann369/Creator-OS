@@ -5,12 +5,15 @@ import { supabase } from '../lib/supabase.js';
 import { getActiveWorkspaceId } from '../lib/workspace.js';
 import { runIdentityLearning } from '../lib/identityLearning.js';
 import {
-  entityStore,
+  nodes as nodeStore,
+  edges as edgeStore,
+  cards as cardStore,
+  edgesTouching,
   rowToNode,
   rowToEdge,
   rowToCard,
   type ExtendedContentPipeline
-} from '../lib/entityStore.js';
+} from '../store/graph.js';
 
 export type { ExtendedContentPipeline };
 
@@ -63,15 +66,24 @@ function buildMirrorNode(card: { id: string; title: string; hook?: string; statu
   return nodeToWorldNode(pipelineCardToNode(card, getActiveWorkspaceId()));
 }
 
-// ─── Supabase Row ↔ Domain Model mappers moved to entityStore ───────────────────
+// ─── Supabase Row ↔ Domain Model mappers moved to ../store/graph ────────────────
 
 // ─── Provider ────────────────────────────────────────────────────────────────
 
 export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [nodes, setNodes] = useState<WorldNode[]>([]);
-  const [edges, setEdges] = useState<WorldEdge[]>([]);
-  const [pipelineCards, setPipelineCards] = useState<ExtendedContentPipeline[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  // Graph and pipeline state live in the shared collections (Roadmap Phase B):
+  // module-level, project-scoped, offline-mirrored, and loaded on first read.
+  // This provider owns the realtime subscriptions and the domain actions.
+  const nodes = nodeStore.useItems();
+  const edges = edgeStore.useItems();
+  const pipelineCards = cardStore.useItems();
+  // Each useLoaded() is a hook — read all three before combining them, or `&&`
+  // short-circuits and the hook order changes between renders.
+  const nodesLoaded = nodeStore.useLoaded();
+  const edgesLoaded = edgeStore.useLoaded();
+  const cardsLoaded = cardStore.useLoaded();
+  const isLoading = !(nodesLoaded && edgesLoaded && cardsLoaded);
+
   const [activeSession, setActiveSession] = useState<CognitiveSession | null>(() => {
     const saved = localStorage.getItem('pronoia_session');
     return saved ? JSON.parse(saved) : null;
@@ -90,64 +102,40 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     });
   }, []);
 
-  // ─── Initial Supabase fetch ────────────────────────────────────────────────
-  useEffect(() => {
-    const loadFromSupabase = async () => {
-      setIsLoading(true);
-      try {
-        const [nodesData, edgesData, cardsData] = await Promise.all([
-          entityStore.loadNodes(getActiveWorkspaceId()),
-          entityStore.loadEdges(getActiveWorkspaceId()),
-          entityStore.loadCards(getActiveWorkspaceId())
-        ]);
-
-        // Every workspace starts empty — the UI carries its own empty states. No
-        // demo/seed content is injected.
-        setNodes(nodesData);
-        setEdges(edgesData);
-        setPipelineCards(cardsData);
-      } catch (err) {
-        console.warn('entityStore load failed — falling back to local state', err);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    loadFromSupabase();
-  }, []);
-
   // ─── Supabase Realtime subscriptions ──────────────────────────────────────
+  // The subscriptions stay here; they feed the collections through the *Remote
+  // methods, which touch state and the offline mirror but never write back.
   useEffect(() => {
     const channel = supabase
       .channel('workspace-realtime')
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'world_nodes' }, payload => {
         if (payload.new.workspace_id !== getActiveWorkspaceId()) return;   // ignore other projects
-        setNodes(prev => prev.some(n => n.id === payload.new.id) ? prev : [...prev, rowToNode(payload.new)]);
+        nodeStore.insertRemote(rowToNode(payload.new));
       })
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'world_nodes' }, payload => {
         if (payload.new.workspace_id !== getActiveWorkspaceId()) return;
-        setNodes(prev => prev.map(n => n.id === payload.new.id ? rowToNode(payload.new) : n));
+        nodeStore.replaceRemote(rowToNode(payload.new));
       })
       .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'world_nodes' }, payload => {
-        setNodes(prev => prev.filter(n => n.id !== payload.old.id));
+        nodeStore.dropRemote(payload.old.id);
       })
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'world_edges' }, payload => {
         if (payload.new.workspace_id !== getActiveWorkspaceId()) return;
-        setEdges(prev => prev.some(e => e.id === payload.new.id) ? prev : [...prev, rowToEdge(payload.new)]);
+        edgeStore.insertRemote(rowToEdge(payload.new));
       })
       .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'world_edges' }, payload => {
-        setEdges(prev => prev.filter(e => e.id !== payload.old.id));
+        edgeStore.dropRemote(payload.old.id);
       })
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'pipeline_cards' }, payload => {
         if (payload.new.workspace_id !== getActiveWorkspaceId()) return;
-        setPipelineCards(prev => prev.some(c => c.id === payload.new.id) ? prev : [...prev, rowToCard(payload.new)]);
+        cardStore.insertRemote(rowToCard(payload.new));
       })
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'pipeline_cards' }, payload => {
         if (payload.new.workspace_id !== getActiveWorkspaceId()) return;
-        setPipelineCards(prev => prev.map(c => c.id === payload.new.id ? rowToCard(payload.new) : c));
+        cardStore.replaceRemote(rowToCard(payload.new));
       })
       .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'pipeline_cards' }, payload => {
-        setPipelineCards(prev => prev.filter(c => c.id !== payload.old.id));
+        cardStore.dropRemote(payload.old.id);
       })
       .subscribe();
 
@@ -161,11 +149,8 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     if (isLoading) return;
     const missing = pipelineCards.filter(c => !nodes.some(n => n.id === mirrorNodeId(c.id)));
     if (missing.length === 0) return;
-    const mNodes = missing.map(buildMirrorNode);
-    setNodes(prev => [...prev, ...mNodes.filter(mn => !prev.some(n => n.id === mn.id))]);
-    // upsert + ignoreDuplicates: idempotent, so re-runs never error on existing rows.
-    Promise.all(mNodes.map(mn => entityStore.upsert(mn as any)))
-      .catch(err => console.warn('Mirror-node backfill skipped:', err));
+    // add() upserts, so a re-run never duplicates or errors on an existing row.
+    missing.map(buildMirrorNode).forEach(mn => nodeStore.add(mn));
   }, [isLoading, pipelineCards, nodes]);
 
   // ─── Session persistence (stays local) ────────────────────────────────────
@@ -210,27 +195,19 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       createdAt: new Date(),
       updatedAt: new Date()
     };
-    // Optimistic UI
-    setNodes(prev => [...prev, newNode]);
-    entityStore.upsert(newNode as any).catch(err => console.error('Failed to save node:', err));
+    nodeStore.add(newNode);
     addActivityLog(`Created concept: ${name}`);
   }, [addActivityLog]);
 
   const updateNode = useCallback((id: string, updates: Partial<WorldNode>) => {
-    setNodes(prev => {
-      const node = prev.find(n => n.id === id);
-      if (node) {
-        const updated = { ...node, ...updates, updatedAt: new Date() };
-        entityStore.upsert(updated as any).catch(err => console.error('Failed to update node in entityStore:', err));
-      }
-      return prev.map(n => n.id === id ? { ...n, ...updates, updatedAt: new Date() } : n);
-    });
+    nodeStore.update(id, updates);
   }, []);
 
   const deleteNode = useCallback((id: string) => {
-    setNodes(prev => prev.filter(n => n.id !== id));
-    setEdges(prev => prev.filter(e => e.sourceId !== id && e.targetId !== id));
-    entityStore.remove(id).catch(err => console.error('Failed to delete node:', err));
+    nodeStore.remove(id);
+    // An edge whose endpoint is gone is unreadable, so the cascade deletes the
+    // rows too rather than only dropping them from view.
+    edgesTouching(id).forEach(e => edgeStore.remove(e.id));
     addActivityLog(`Deleted node: ${id}`);
   }, [addActivityLog]);
 
@@ -245,18 +222,16 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       confidence: { extractionConfidence: 1.0, reasoningConfidence: 1.0, relationshipConfidence: 1.0, verificationConfidence: 1.0 },
       createdAt: new Date()
     };
-    setEdges(prev => [...prev, newEdge]);
-    entityStore.saveEdge(newEdge).catch(err => console.error('Failed to save edge:', err));
+    edgeStore.add(newEdge);
     addActivityLog(`Linked: ${sourceId} → ${targetId} (${relationshipType})`);
   }, [addActivityLog]);
 
   const updateEdge = useCallback((id: string, updates: Partial<WorldEdge>) => {
-    setEdges(prev => prev.map(e => e.id === id ? { ...e, ...updates } : e));
+    edgeStore.update(id, updates);
   }, []);
 
   const deleteEdge = useCallback((id: string) => {
-    setEdges(prev => prev.filter(e => e.id !== id));
-    entityStore.deleteEdge(id).catch(err => console.error('Failed to delete edge:', err));
+    edgeStore.remove(id);
   }, []);
 
   // ─── Pipeline Actions ──────────────────────────────────────────────────────
@@ -279,51 +254,32 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       createdAt: new Date(),
       updatedAt: new Date()
     };
-    setPipelineCards(prev => [...prev, newCard]);
-    entityStore.upsert({ ...newCard, type: 'pipeline_card' } as any).catch(err => console.error('Failed to create card:', err));
+    cardStore.add(newCard);
 
     // Single source of truth: the card also enters the World Model as a node.
     const mNode = buildMirrorNode(newCard);
-    setNodes(prev => prev.some(n => n.id === mNode.id) ? prev : [...prev, mNode]);
-    entityStore.upsert(mNode as any).catch(err => console.warn('Failed to mirror card as node:', err));
+    if (!nodeStore.getAll().some(n => n.id === mNode.id)) nodeStore.add(mNode);
 
     addActivityLog(`Created draft: ${title}`);
     return newCard.id;
   }, [addActivityLog]);
 
   const updateCard = useCallback((id: string, updates: Partial<ExtendedContentPipeline>) => {
-    setPipelineCards(prev => {
-      const card = prev.find(c => c.id === id);
-      if (card) {
-        const updated = { ...card, ...updates, type: 'pipeline_card' as const, updatedAt: new Date() };
-        entityStore.upsert(updated as any).catch(err => console.error('Failed to update card in entityStore:', err));
-      }
-      return prev.map(c => c.id === id ? { ...c, ...updates, updatedAt: new Date() } : c);
-    });
+    cardStore.update(id, updates);
 
     // Keep the mirror node in sync (title → node name).
     if (updates.title !== undefined) {
-      const mId = mirrorNodeId(id);
-      setNodes(prev => {
-        const node = prev.find(n => n.id === mId);
-        if (node) {
-          const updated = { ...node, name: updates.title!, updatedAt: new Date() };
-          entityStore.upsert(updated as any).catch(err => console.error('Failed to update mirror node in entityStore:', err));
-        }
-        return prev.map(n => n.id === mId ? { ...n, name: updates.title!, updatedAt: new Date() } : n);
-      });
+      nodeStore.update(mirrorNodeId(id), { name: updates.title });
     }
   }, []);
 
   const deleteCard = useCallback((id: string) => {
-    setPipelineCards(prev => prev.filter(c => c.id !== id));
-    entityStore.remove(id).catch(err => console.error('Failed to delete card:', err));
+    cardStore.remove(id);
 
     // Remove the mirror node and any edges touching it.
     const mId = mirrorNodeId(id);
-    setNodes(prev => prev.filter(n => n.id !== mId));
-    setEdges(prev => prev.filter(e => e.sourceId !== mId && e.targetId !== mId));
-    entityStore.remove(mId).catch(err => console.warn('Failed to delete mirror node:', err));
+    nodeStore.remove(mId);
+    edgesTouching(mId).forEach(e => edgeStore.remove(e.id));
 
     addActivityLog(`Archived card: ${id}`);
   }, [addActivityLog]);
@@ -338,8 +294,7 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       createdAt: new Date(),
       updatedAt: new Date()
     };
-    setPipelineCards(prev => [...prev, duplicated]);
-    entityStore.upsert({ ...duplicated, type: 'pipeline_card' } as any).catch(err => console.error('Failed to duplicate card:', err));
+    cardStore.add(duplicated);
     addActivityLog(`Cloned draft: ${duplicated.title}`);
   }, [pipelineCards, addActivityLog]);
 
@@ -372,8 +327,7 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       createdAt: new Date(),
       updatedAt: new Date()
     };
-    setNodes(prev => [...prev, newNode]);
-    entityStore.upsert(newNode as any).catch(err => console.warn('Failed to persist promoted node:', err));
+    nodeStore.add(newNode);
 
     const relationshipType = type === 'goal' ? 'goal_supports' : 'references';
     const newEdge: WorldEdge = {
@@ -386,8 +340,7 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       confidence: { extractionConfidence: 1, reasoningConfidence: 1, relationshipConfidence: 1, verificationConfidence: 1 },
       createdAt: new Date()
     };
-    setEdges(prev => [...prev, newEdge]);
-    entityStore.saveEdge(newEdge).catch(err => console.warn('Failed to persist promotion edge:', err));
+    edgeStore.add(newEdge);
 
     addActivityLog(`Promoted "${card.title}" → ${type}`);
   }, [pipelineCards, nodes, addActivityLog]);

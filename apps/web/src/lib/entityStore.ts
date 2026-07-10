@@ -1,28 +1,25 @@
-import type { 
-  Entity, 
-  EntityType, 
-  EntityStore, 
-  Relationship, 
-  RelationshipType, 
-  Moodboard, 
-  Color, 
-  BoardFonts, 
-  MoodSection, 
-  WorldNode, 
-  WorldEdge, 
-  ContentPipeline 
+import type {
+  Entity,
+  EntityType,
+  EntityStore,
+  Relationship,
+  RelationshipType,
+  Moodboard,
+  Color,
+  BoardFonts,
+  MoodSection,
+  WorldNode
 } from '@pronoia/domain';
 import { supabase } from './supabase.js';
 import { getActiveWorkspaceId, scopedKey } from './workspace.js';
 import { relationships as relationshipStore } from '../store/relationships.js';
+import {
+  nodes as nodeStore,
+  cards as cardStore,
+  type ExtendedContentPipeline,
+} from '../store/graph.js';
 
-// Extended pipeline card type supporting checklists, markdown editor bodies, comments, and attachments
-export interface ExtendedContentPipeline extends ContentPipeline {
-  markdown?: string;
-  checklists?: { id: string; text: string; done: boolean }[];
-  attachments?: { id: string; name: string; type: string; url?: string }[];
-  comments?: { id: string; author: string; text: string; createdAt: string }[];
-}
+export type { ExtendedContentPipeline };
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Client-side EntityStore adapter (Roadmap Step 3, slice 1, 2 & 3).
@@ -30,12 +27,14 @@ export interface ExtendedContentPipeline extends ContentPipeline {
 // Wraps the EXISTING Supabase tables from the browser — same model the app
 // already uses (anon key, offline-first with a localStorage mirror). Consolidates
 // the relationship and entity persistence that was copy-pasted inside hooks.
+//
+// Relationships (../store/relationships) and the graph/pipeline
+// (../store/graph) have moved out into shared collections; this adapter keeps
+// the EntityStore port's shape over them so its callers stay unchanged. What is
+// still owned here: moodboards, research and identities.
 // ─────────────────────────────────────────────────────────────────────────────
 
 const LS_KEY = 'pronoia_moodboards';
-const NODES_LS_KEY = 'pronoia_nodes';
-const EDGES_LS_KEY = 'pronoia_edges';
-const CARDS_LS_KEY = 'pronoia_cards';
 const RESEARCH_LS_KEY = 'pronoia_research';
 const IDENTITY_LS_KEY = 'pronoia_identities';
 
@@ -167,137 +166,6 @@ function rowToIdentity(row: any): Entity {
   } as Entity;
 }
 
-// ─── World Node, Edge and Card Mappers ────────────────────────────────────────
-export function rowToNode(row: any): WorldNode {
-  return {
-    id: row.id,
-    workspaceId: row.workspace_id ?? getActiveWorkspaceId(),
-    name: row.name,
-    type: row.type,
-    description: row.description,
-    confidence: row.confidence,
-    lifecycleState: row.lifecycle_state,
-    sourceCount: row.source_count,
-    metadata: row.metadata ?? {},
-    derivedFrom: [],
-    lastVerified: new Date(row.updated_at ?? row.created_at ?? new Date()),
-    createdAt: new Date(row.created_at ?? new Date()),
-    updatedAt: new Date(row.updated_at ?? new Date())
-  };
-}
-
-export function nodeToRow(node: WorldNode) {
-  return {
-    id: node.id,
-    workspace_id: node.workspaceId,
-    name: node.name,
-    type: node.type,
-    description: node.description,
-    confidence: node.confidence,
-    lifecycle_state: node.lifecycleState,
-    source_count: node.sourceCount,
-    metadata: node.metadata ?? {}
-  };
-}
-
-export function rowToEdge(row: any): WorldEdge {
-  return {
-    id: row.id,
-    workspaceId: row.workspace_id ?? getActiveWorkspaceId(),
-    sourceId: row.source_id,
-    targetId: row.target_id,
-    weight: row.weight != null ? parseFloat(row.weight) : 1.0,
-    relationshipType: row.relationship_type,
-    confidence: row.confidence,
-    createdAt: new Date(row.created_at ?? new Date())
-  };
-}
-
-export function edgeToRow(edge: WorldEdge) {
-  return {
-    id: edge.id,
-    workspace_id: edge.workspaceId,
-    source_id: edge.sourceId,
-    target_id: edge.targetId,
-    weight: edge.weight,
-    relationship_type: edge.relationshipType,
-    confidence: edge.confidence
-  };
-}
-
-export function rowToCard(row: any): ExtendedContentPipeline {
-  return {
-    id: row.id,
-    workspaceId: row.workspace_id ?? getActiveWorkspaceId(),
-    title: row.title,
-    hook: row.hook,
-    format: row.format,
-    status: row.status,
-    platforms: row.platforms ?? [],
-    trendScore: row.trend_score,
-    executivePriority: row.executive_priority,
-    markdown: row.markdown,
-    checklists: row.checklists ?? [],
-    attachments: row.attachments ?? [],
-    comments: row.comments ?? [],
-    linkedNodeIds: [],
-    createdAt: new Date(row.created_at ?? new Date()),
-    updatedAt: new Date(row.updated_at ?? new Date())
-  };
-}
-
-export function cardToRow(c: ExtendedContentPipeline) {
-  return {
-    id: c.id,
-    workspace_id: c.workspaceId,
-    title: c.title,
-    hook: c.hook,
-    format: c.format,
-    status: c.status,
-    platforms: c.platforms,
-    trend_score: c.trendScore,
-    executive_priority: c.executivePriority,
-    markdown: c.markdown,
-    checklists: c.checklists,
-    attachments: c.attachments,
-    comments: c.comments
-  };
-}
-
-// ─── Local Storage helpers for Slice 3 ────────────────────────────────────────
-function loadNodesLocal(): WorldNode[] {
-  try {
-    const raw = localStorage.getItem(scopedKey(NODES_LS_KEY));
-    if (raw) return (JSON.parse(raw) as any[]).map(rowToNode);
-  } catch {}
-  return [];
-}
-function persistNodesLocal(nodes: WorldNode[]) {
-  try { localStorage.setItem(scopedKey(NODES_LS_KEY), JSON.stringify(nodes)); } catch {}
-}
-
-function loadEdgesLocal(): WorldEdge[] {
-  try {
-    const raw = localStorage.getItem(scopedKey(EDGES_LS_KEY));
-    if (raw) return (JSON.parse(raw) as any[]).map(rowToEdge);
-  } catch {}
-  return [];
-}
-function persistEdgesLocal(edges: WorldEdge[]) {
-  try { localStorage.setItem(scopedKey(EDGES_LS_KEY), JSON.stringify(edges)); } catch {}
-}
-
-function loadCardsLocal(): ExtendedContentPipeline[] {
-  try {
-    const raw = localStorage.getItem(scopedKey(CARDS_LS_KEY));
-    if (raw) return (JSON.parse(raw) as any[]).map(rowToCard);
-  } catch {}
-  return [];
-}
-function persistCardsLocal(cards: ExtendedContentPipeline[]) {
-  try { localStorage.setItem(scopedKey(CARDS_LS_KEY), JSON.stringify(cards)); } catch {}
-}
-
 /**
  * Supabase-backed EntityStore for the browser.
  */
@@ -383,42 +251,16 @@ export class SupabaseEntityStore implements EntityStore {
       return this.loadIdentitiesLocal() as unknown as T[];
     }
 
-    // World node types stored in world_nodes table
+    // Graph and pipeline live in the shared collections, which are scoped to the
+    // active project — the workspaceId argument is redundant for them.
     if (type === 'concept' || type === 'goal' || type === 'project') {
-      try {
-        const { data, error } = await supabase
-          .from('world_nodes')
-          .select('*')
-          .eq('workspace_id', workspaceId)
-          .eq('type', type);
-        if (!error && data) {
-          const mapped = data.map(rowToNode) as unknown as T[];
-          // Update cached nodes locally
-          const cached = loadNodesLocal().filter(n => n.type !== type);
-          persistNodesLocal([...cached, ...mapped as unknown as WorldNode[]]);
-          return mapped;
-        }
-      } catch (err) {
-        console.warn(`Supabase world_nodes list failed for ${type}, falling back:`, err);
-      }
-      return loadNodesLocal().filter(n => n.type === type) as unknown as T[];
+      await nodeStore.load();
+      return nodeStore.getAll().filter(n => n.type === type) as unknown as T[];
     }
 
     if (type === 'pipeline_card') {
-      try {
-        const { data, error } = await supabase
-          .from('pipeline_cards')
-          .select('*')
-          .eq('workspace_id', workspaceId);
-        if (!error && data) {
-          const mapped = data.map(rowToCard) as unknown as T[];
-          persistCardsLocal(mapped as unknown as ExtendedContentPipeline[]);
-          return mapped;
-        }
-      } catch (err) {
-        console.warn('Supabase pipeline_cards list failed, falling back:', err);
-      }
-      return loadCardsLocal() as unknown as T[];
+      await cardStore.load();
+      return cardStore.getAll() as unknown as T[];
     }
 
     throw new Error(`EntityStore.list: entity type ${type} persistence lands in a later step`);
@@ -457,35 +299,13 @@ export class SupabaseEntityStore implements EntityStore {
     }
 
     if (id.startsWith('node-') || id.startsWith('card:')) {
-      try {
-        const { data, error } = await supabase
-          .from('world_nodes')
-          .select('*')
-          .eq('id', id)
-          .single();
-        if (!error && data) {
-          return rowToNode(data) as unknown as T;
-        }
-      } catch (err) {
-        console.warn('Supabase world_nodes get failed, checking local:', err);
-      }
-      return (loadNodesLocal().find(n => n.id === id) ?? null) as unknown as T | null;
+      await nodeStore.load();
+      return (nodeStore.getAll().find(n => n.id === id) ?? null) as unknown as T | null;
     }
 
     if (id.startsWith('card-')) {
-      try {
-        const { data, error } = await supabase
-          .from('pipeline_cards')
-          .select('*')
-          .eq('id', id)
-          .single();
-        if (!error && data) {
-          return rowToCard(data) as unknown as T;
-        }
-      } catch (err) {
-        console.warn('Supabase pipeline_cards get failed, checking local:', err);
-      }
-      return (loadCardsLocal().find(c => c.id === id) ?? null) as unknown as T | null;
+      await cardStore.load();
+      return (cardStore.getAll().find(c => c.id === id) ?? null) as unknown as T | null;
     }
 
     throw new Error(`EntityStore.get: entity persistence for id ${id} lands in a later step`);
@@ -560,45 +380,15 @@ export class SupabaseEntityStore implements EntityStore {
 
     // World node types
     if (entity.type === 'concept' || entity.type === 'goal' || entity.type === 'project') {
-      const node = entity as unknown as WorldNode;
-      try {
-        const { error } = await supabase
-          .from('world_nodes')
-          .upsert(nodeToRow(node), { onConflict: 'id' });
-        if (error) throw error;
-      } catch (err) {
-        console.warn('Supabase world_nodes upsert failed, syncing to local fallback:', err);
-      }
-      const local = loadNodesLocal();
-      const idx = local.findIndex(n => n.id === node.id);
-      if (idx >= 0) {
-        local[idx] = node;
-      } else {
-        local.push(node);
-      }
-      persistNodesLocal(local);
+      await nodeStore.load();
+      nodeStore.add(entity as unknown as WorldNode);
       return;
     }
 
     // Content Pipeline card
     if (entity.type === 'pipeline_card') {
-      const card = entity as unknown as ExtendedContentPipeline;
-      try {
-        const { error } = await supabase
-          .from('pipeline_cards')
-          .upsert(cardToRow(card), { onConflict: 'id' });
-        if (error) throw error;
-      } catch (err) {
-        console.warn('Supabase pipeline_cards upsert failed, syncing to local fallback:', err);
-      }
-      const local = loadCardsLocal();
-      const idx = local.findIndex(c => c.id === card.id);
-      if (idx >= 0) {
-        local[idx] = card;
-      } else {
-        local.push(card);
-      }
-      persistCardsLocal(local);
+      await cardStore.load();
+      cardStore.add(entity as unknown as ExtendedContentPipeline);
       return;
     }
 
@@ -620,115 +410,18 @@ export class SupabaseEntityStore implements EntityStore {
     }
 
     if (id.startsWith('node-') || id.startsWith('card:')) {
-      try {
-        const { error } = await supabase.from('world_nodes').delete().eq('id', id);
-        if (error) throw error;
-      } catch (err) {
-        console.warn('Supabase world_nodes delete failed, updating local fallback:', err);
-      }
-      const local = loadNodesLocal();
-      const next = local.filter(n => n.id !== id);
-      persistNodesLocal(next);
+      await nodeStore.load();
+      nodeStore.remove(id);
       return;
     }
 
     if (id.startsWith('card-')) {
-      try {
-        const { error } = await supabase.from('pipeline_cards').delete().eq('id', id);
-        if (error) throw error;
-      } catch (err) {
-        console.warn('Supabase pipeline_cards delete failed, updating local fallback:', err);
-      }
-      const local = loadCardsLocal();
-      const next = local.filter(c => c.id !== id);
-      persistCardsLocal(next);
+      await cardStore.load();
+      cardStore.remove(id);
       return;
     }
 
     throw new Error(`EntityStore.remove: entity persistence for id ${id} lands in a later step`);
-  }
-
-  // ─── Custom class methods to make Slice 3 delegation in WorkspaceContext extremely clean ───
-  async loadNodes(workspaceId: string): Promise<WorldNode[]> {
-    try {
-      const { data, error } = await supabase
-        .from('world_nodes')
-        .select('*')
-        .eq('workspace_id', workspaceId);
-      if (!error && data) {
-        const mapped = data.map(rowToNode);
-        persistNodesLocal(mapped);
-        return mapped;
-      }
-    } catch (err) {
-      console.warn('Supabase world_nodes load failed, using local fallback:', err);
-    }
-    return loadNodesLocal();
-  }
-
-  async loadEdges(workspaceId: string): Promise<WorldEdge[]> {
-    try {
-      const { data, error } = await supabase
-        .from('world_edges')
-        .select('*')
-        .eq('workspace_id', workspaceId);
-      if (!error && data) {
-        const mapped = data.map(rowToEdge);
-        persistEdgesLocal(mapped);
-        return mapped;
-      }
-    } catch (err) {
-      console.warn('Supabase world_edges load failed, using local fallback:', err);
-    }
-    return loadEdgesLocal();
-  }
-
-  async saveEdge(edge: WorldEdge): Promise<void> {
-    try {
-      const { error } = await supabase
-        .from('world_edges')
-        .upsert(edgeToRow(edge), { onConflict: 'id' });
-      if (error) throw error;
-    } catch (err) {
-      console.warn('Supabase world_edges save failed, caching locally:', err);
-    }
-    const local = loadEdgesLocal();
-    const idx = local.findIndex(e => e.id === edge.id);
-    if (idx >= 0) {
-      local[idx] = edge;
-    } else {
-      local.push(edge);
-    }
-    persistEdgesLocal(local);
-  }
-
-  async deleteEdge(id: string): Promise<void> {
-    try {
-      const { error } = await supabase.from('world_edges').delete().eq('id', id);
-      if (error) throw error;
-    } catch (err) {
-      console.warn('Supabase world_edges delete failed, caching locally:', err);
-    }
-    const local = loadEdgesLocal();
-    const next = local.filter(e => e.id !== id);
-    persistEdgesLocal(next);
-  }
-
-  async loadCards(workspaceId: string): Promise<ExtendedContentPipeline[]> {
-    try {
-      const { data, error } = await supabase
-        .from('pipeline_cards')
-        .select('*')
-        .eq('workspace_id', workspaceId);
-      if (!error && data) {
-        const mapped = data.map(rowToCard);
-        persistCardsLocal(mapped);
-        return mapped;
-      }
-    } catch (err) {
-      console.warn('Supabase pipeline_cards load failed, using local fallback:', err);
-    }
-    return loadCardsLocal();
   }
 
   private loadResearchLocal(): Entity[] {

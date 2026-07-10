@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { createStore } from './createStore.js';
 import { useStore } from './useStore.js';
-import { upsertItem, patchItem, removeItem } from './reducers.js';
+import { upsertItem, insertItem, replaceItem, patchItem, removeItem } from './reducers.js';
 import { supabase } from '../lib/supabase.js';
 import { getActiveWorkspaceId, scopedKey, subscribeWorkspaceChange } from '../lib/workspace.js';
 
@@ -37,6 +37,12 @@ export interface CollectionConfig<T> {
    * IdeationView filters client-side).
    */
   scope?: 'workspace' | 'account';
+  /**
+   * Where add() puts a new item. Lists that read as creation order — the graph
+   * nodes/edges and the pipeline columns — append; everything else shows the
+   * newest first.
+   */
+  insertAt?: 'start' | 'end';
 }
 
 export interface Collection<T> {
@@ -49,10 +55,22 @@ export interface Collection<T> {
   add: (item: T) => void;
   update: (id: string, patch: Partial<T>) => void;
   remove: (id: string) => void;
+
+  // ── Changes that arrived FROM the backend (Supabase realtime) ──────────────
+  // They update the state and the offline mirror but never write back, so an
+  // echo of our own insert cannot loop, and another client's change cannot be
+  // re-persisted by every tab that sees it.
+  /** INSERT: add unless the id is already known (keeps a local optimistic item). */
+  insertRemote: (item: T) => void;
+  /** UPDATE: replace the known item; ignore an id we have never seen. */
+  replaceRemote: (item: T) => void;
+  /** DELETE: forget the id. */
+  dropRemote: (id: string) => void;
 }
 
 export function createCollection<T>(cfg: CollectionConfig<T>): Collection<T> {
   const accountScoped = cfg.scope === 'account';
+  const insertAt = cfg.insertAt ?? 'start';
   const storageKey = () => (accountScoped ? cfg.lsKey : scopedKey(cfg.lsKey));
 
   const loadLocal = (): T[] => {
@@ -115,6 +133,13 @@ export function createCollection<T>(cfg: CollectionConfig<T>): Collection<T> {
     });
   }
 
+  /** State + offline mirror only — for changes that came from the backend. */
+  function applyLocal(next: T[]) {
+    if (next === store.getState()) return;
+    store.setState(next);
+    mirror(next);
+  }
+
   function commit(next: T[], changed: T | undefined, isDelete = false, id?: string) {
     store.setState(next);
     mirror(next);
@@ -136,12 +161,16 @@ export function createCollection<T>(cfg: CollectionConfig<T>): Collection<T> {
       useEffect(() => { void ensureLoaded(); }, []);
       return useStore(loaded);
     },
-    add: (item) => commit(upsertItem(store.getState(), item, cfg.idOf), item),
+    add: (item) => commit(upsertItem(store.getState(), item, cfg.idOf, insertAt), item),
     update: (id, patch) => {
       const stamped = cfg.stampUpdatedAt ? ({ ...patch, updatedAt: new Date() } as Partial<T>) : patch;
       const next = patchItem(store.getState(), id, stamped, cfg.idOf);
       commit(next, next.find((i) => cfg.idOf(i) === id));
     },
     remove: (id) => commit(removeItem(store.getState(), id, cfg.idOf), undefined, true, id),
+
+    insertRemote: (item) => applyLocal(insertItem(store.getState(), item, cfg.idOf, insertAt)),
+    replaceRemote: (item) => applyLocal(replaceItem(store.getState(), item, cfg.idOf)),
+    dropRemote: (id) => applyLocal(removeItem(store.getState(), id, cfg.idOf)),
   };
 }

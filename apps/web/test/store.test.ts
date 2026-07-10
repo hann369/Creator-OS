@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createStore } from '../src/store/createStore.ts';
-import { upsertItem, patchItem, removeItem } from '../src/store/reducers.ts';
+import { upsertItem, insertItem, replaceItem, patchItem, removeItem } from '../src/store/reducers.ts';
 import {
   setActiveWorkspaceId, getActiveWorkspaceId, subscribeWorkspaceChange, scopedKey, isDefaultWorkspace,
 } from '../src/lib/workspace.ts';
@@ -46,6 +46,27 @@ test('upsertItem inserts new items at the front and replaces by id', () => {
   const replaced = upsertItem(items, { id: 'a', title: 'A2' }, idOf);
   assert.equal(replaced.find((r) => r.id === 'a')!.title, 'A2');
   assert.equal(replaced.length, 2, 'replacing does not grow the list');
+});
+
+test('upsertItem appends when the collection reads as creation order', () => {
+  const a: Row = { id: 'a', title: 'A' };
+  const b: Row = { id: 'b', title: 'B' };
+  assert.deepEqual(upsertItem([a], b, idOf, 'end').map(idOf), ['a', 'b']);
+});
+
+// The realtime reducers: an INSERT must not clobber a local optimistic item, and
+// an UPDATE for a row we never loaded must not conjure one out of nothing.
+test('insertItem ignores an id that is already known', () => {
+  const items: Row[] = [{ id: 'a', title: 'local' }];
+  const same = insertItem(items, { id: 'a', title: 'remote' }, idOf);
+  assert.equal(same, items, 'keeps the local item and the array reference');
+  assert.deepEqual(insertItem(items, { id: 'b', title: 'B' }, idOf, 'end').map(idOf), ['a', 'b']);
+});
+
+test('replaceItem swaps a known item and no-ops for an unknown id', () => {
+  const items: Row[] = [{ id: 'a', title: 'A' }];
+  assert.equal(replaceItem(items, { id: 'a', title: 'A2' }, idOf)[0].title, 'A2');
+  assert.equal(replaceItem(items, { id: 'b', title: 'B' }, idOf), items, 'unknown id changes nothing');
 });
 
 test('patchItem shallow-merges and is a no-op for a missing id', () => {
