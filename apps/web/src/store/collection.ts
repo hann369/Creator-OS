@@ -2,22 +2,24 @@ import { useEffect } from 'react';
 import { createStore } from './createStore.js';
 import { useStore } from './useStore.js';
 import { upsertItem, insertItem, replaceItem, patchItem, removeItem } from './reducers.js';
-import { supabase } from '../lib/supabase.js';
+import { getRepository, defaultStorage, type KeyValueStorage, type Repository } from './repository.js';
 import { getActiveWorkspaceId, scopedKey, subscribeWorkspaceChange } from '../lib/workspace.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Entity collection (Roadmap Phase B).
 //
-// One reusable, project-scoped store for a Supabase-backed entity type, with an
-// offline localStorage mirror. Replaces the copy-pasted load/persist/upsert/
-// delete logic that lived independently in useGoals/useDocuments/useAssets/
-// usePeople. The state mutation logic is factored into PURE reducers (./reducers,
-// unit tested); this factory wraps them with the Supabase + localStorage IO.
+// One reusable, project-scoped store for a persisted entity type, with an
+// offline mirror. Replaces the copy-pasted load/persist/upsert/delete logic that
+// lived independently in useGoals/useDocuments/useAssets/usePeople. The state
+// mutation logic is factored into PURE reducers (./reducers); the IO goes
+// through the Repository port (./repository), so this whole factory — load,
+// seed, offline fallback, project-switch reload — is unit tested against an
+// in-memory repository rather than against a live Supabase.
 // ─────────────────────────────────────────────────────────────────────────────
 
 export interface CollectionConfig<T> {
-  table: string;                 // Supabase table
-  lsKey: string;                 // localStorage mirror key (scoped per workspace)
+  table: string;                 // backing table
+  lsKey: string;                 // offline mirror key (scoped per workspace)
   idOf: (item: T) => string;
   fromRow: (row: any) => T;
   toRow: (item: T) => any;
@@ -43,6 +45,10 @@ export interface CollectionConfig<T> {
    * newest first.
    */
   insertAt?: 'start' | 'end';
+  /** Persistence. Defaults to the app-wide repository wired in main.tsx. */
+  repo?: Repository;
+  /** Offline mirror backing store. Defaults to localStorage. */
+  storage?: KeyValueStorage;
 }
 
 export interface Collection<T> {
@@ -71,11 +77,15 @@ export interface Collection<T> {
 export function createCollection<T>(cfg: CollectionConfig<T>): Collection<T> {
   const accountScoped = cfg.scope === 'account';
   const insertAt = cfg.insertAt ?? 'start';
+  const storage = cfg.storage ?? defaultStorage;
+  // Resolved per call, never at construction: the app registers its repository
+  // in main.tsx, which runs after these module-level collections are created.
+  const repo = (): Repository => cfg.repo ?? getRepository();
   const storageKey = () => (accountScoped ? cfg.lsKey : scopedKey(cfg.lsKey));
 
   const loadLocal = (): T[] => {
     try {
-      const raw = localStorage.getItem(storageKey());
+      const raw = storage.getItem(storageKey());
       if (raw) return (JSON.parse(raw) as any[]).map(cfg.fromRow);
     } catch { /* ignore */ }
     return [];
@@ -86,30 +96,31 @@ export function createCollection<T>(cfg: CollectionConfig<T>): Collection<T> {
   let inFlight: Promise<void> | null = null;
 
   const mirror = (items: T[]) => {
-    try { localStorage.setItem(storageKey(), JSON.stringify(items.map(cfg.toRow))); } catch { /* ignore */ }
+    try { storage.setItem(storageKey(), JSON.stringify(items.map(cfg.toRow))); } catch { /* ignore */ }
   };
 
   function ensureLoaded(): Promise<void> {
     if (inFlight) return inFlight;
     inFlight = (async () => {
+      // Resolved before the try: a missing registration is a wiring bug, so it
+      // must reject the promise rather than be swallowed as "offline" below.
+      const backend = repo();
       try {
-        const query = supabase.from(cfg.table).select('*');
-        const r = await (accountScoped ? query : query.eq('workspace_id', getActiveWorkspaceId()));
-        if (r.error || !r.data) return;
+        const rows = await backend.list(cfg.table, accountScoped ? undefined : getActiveWorkspaceId());
 
-        if (r.data.length === 0 && cfg.seed && store.getState().length === 0) {
+        if (rows.length === 0 && cfg.seed && store.getState().length === 0) {
           const seeded = cfg.seed();
           if (seeded.length > 0) {
             store.setState(seeded);
             mirror(seeded);
             for (const item of seeded) {
-              supabase.from(cfg.table).upsert(cfg.toRow(item), { onConflict: 'id' }).then(() => {}, () => {});
+              backend.upsert(cfg.table, cfg.toRow(item)).then(() => {}, () => {});
             }
             return;
           }
         }
 
-        const mapped = r.data.map(cfg.fromRow);
+        const mapped = rows.map(cfg.fromRow);
         store.setState(mapped);
         mirror(mapped);
       } catch { /* offline → keep local */ }
@@ -144,9 +155,9 @@ export function createCollection<T>(cfg: CollectionConfig<T>): Collection<T> {
     store.setState(next);
     mirror(next);
     if (isDelete && id) {
-      supabase.from(cfg.table).delete().eq('id', id).then(() => {}, () => {});
+      repo().remove(cfg.table, id).then(() => {}, () => {});
     } else if (changed) {
-      supabase.from(cfg.table).upsert(cfg.toRow(changed), { onConflict: 'id' }).then(() => {}, () => {});
+      repo().upsert(cfg.table, cfg.toRow(changed)).then(() => {}, () => {});
     }
   }
 

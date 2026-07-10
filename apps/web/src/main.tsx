@@ -7,8 +7,14 @@ import { AuthProvider, useAuth } from './context/AuthContext.tsx'
 import { ProjectsScreen } from './components/ProjectsScreen.tsx'
 import { useProjects, type ProjectItem } from './hooks/useProjects.ts'
 import { setActiveWorkspaceId } from './lib/workspace.ts'
+import { setRepository } from './store/repository.ts'
+import { supabaseRepository } from './store/supabaseRepository.ts'
 import { CourseViewer } from './views/CourseViewer.tsx'
 import { LandingPage } from './views/LandingPage.tsx'
+
+// Compose the data layer: the collections resolve this lazily, on their first
+// read or write, so registering it before render() is early enough.
+setRepository(supabaseRepository)
 
 // Gateway: show the projects screen first; entering a project mounts the
 // workspace. Each project is its OWN data scope — the active project's id becomes

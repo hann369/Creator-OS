@@ -11,7 +11,7 @@
   "scripts": {
     "build": "npm run build --workspaces --if-present",
     "dev": "npm run dev --workspaces --parallel --if-present",
-    "test": "node --test \"packages/**/test/**/*.test.ts\" \"apps/**/test/**/*.test.ts\""
+    "test": "node --import ./scripts/test-setup.mjs --test \"packages/**/test/**/*.test.ts\" \"apps/**/test/**/*.test.ts\""
   },
   "devDependencies": {
     "typescript": "^5.0.0"
