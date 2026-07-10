@@ -14,6 +14,7 @@ import type {
 } from '@pronoia/domain';
 import { supabase } from './supabase.js';
 import { getActiveWorkspaceId, scopedKey } from './workspace.js';
+import { relationships as relationshipStore } from '../store/relationships.js';
 
 // Extended pipeline card type supporting checklists, markdown editor bodies, comments, and attachments
 export interface ExtendedContentPipeline extends ContentPipeline {
@@ -31,7 +32,6 @@ export interface ExtendedContentPipeline extends ContentPipeline {
 // the relationship and entity persistence that was copy-pasted inside hooks.
 // ─────────────────────────────────────────────────────────────────────────────
 
-const REL_LS_KEY = 'pronoia_relationships';
 const LS_KEY = 'pronoia_moodboards';
 const NODES_LS_KEY = 'pronoia_nodes';
 const EDGES_LS_KEY = 'pronoia_edges';
@@ -42,45 +42,6 @@ const IDENTITY_LS_KEY = 'pronoia_identities';
 const uid = (p: string) => `${p}-${crypto.randomUUID().slice(0, 8)}`;
 
 const DEFAULT_FONTS: BoardFonts = { title: 'Anton', subheading: 'Archivo', caption: 'Space Grotesk' };
-
-// ─── Relationship Mappers ────────────────────────────────────────────────────
-function normalizeRel(raw: any): Relationship {
-  return {
-    id: raw.id,
-    workspaceId: raw.workspaceId ?? raw.workspace_id ?? getActiveWorkspaceId(),
-    sourceId: raw.sourceId ?? raw.source_id,
-    targetId: raw.targetId ?? raw.target_id,
-    type: raw.type ?? raw.relationship_type,
-    weight: raw.weight != null ? parseFloat(raw.weight) : undefined,
-    metadata: raw.metadata ?? {},
-    createdAt: new Date(raw.createdAt ?? raw.created_at ?? new Date()),
-  };
-}
-
-function relToRow(r: Relationship) {
-  return {
-    id: r.id,
-    workspace_id: r.workspaceId,
-    source_id: r.sourceId,
-    target_id: r.targetId,
-    type: r.type,
-    weight: r.weight ?? null,
-    metadata: r.metadata ?? {},
-    created_at: r.createdAt.toISOString(),
-  };
-}
-
-function loadRelsLocal(): Relationship[] {
-  try {
-    const raw = localStorage.getItem(scopedKey(REL_LS_KEY));
-    if (raw) return (JSON.parse(raw) as any[]).map(normalizeRel);
-  } catch { /* ignore */ }
-  return [];
-}
-
-function persistRelsLocal(rels: Relationship[]) {
-  try { localStorage.setItem(scopedKey(REL_LS_KEY), JSON.stringify(rels)); } catch { /* ignore */ }
-}
 
 // ─── Moodboard Normalization & Serialization ──────────────────────────────────
 export function normalizeBoard(raw: any): Moodboard {
@@ -343,19 +304,15 @@ function persistCardsLocal(cards: ExtendedContentPipeline[]) {
 export class SupabaseEntityStore implements EntityStore {
   // ─── Relationships ──────────────────────────────────────────────────────────
 
+  // Persistence and row mapping live in the shared collection
+  // (../store/relationships). These methods keep the EntityStore port's async
+  // shape for callers, but every write now lands in the store mounted views read.
+
   /** Load the full relationship set for the workspace (Supabase → localStorage
    *  fallback). Kept as a bulk read because the app filters in memory. */
   async loadAll(): Promise<Relationship[]> {
-    try {
-      const { data, error } = await supabase
-        .from('relationships').select('*').eq('workspace_id', getActiveWorkspaceId());
-      if (!error && data) {
-        const mapped = data.map(normalizeRel);
-        persistRelsLocal(mapped);
-        return mapped;
-      }
-    } catch { /* offline / no table → localStorage */ }
-    return loadRelsLocal();
+    await relationshipStore.load();
+    return relationshipStore.getAll();
   }
 
   async relationshipsFor(entityId: string): Promise<Relationship[]> {
@@ -376,34 +333,13 @@ export class SupabaseEntityStore implements EntityStore {
   /** Persist a pre-built relationship record (keeps a caller's optimistic id).
    *  Adapter-level helper beyond the port — used by the optimistic client hook. */
   async save(rel: Relationship): Promise<void> {
-    try {
-      const { error } = await supabase.from('relationships').upsert(relToRow(rel), { onConflict: 'id' });
-      if (error) throw error;
-    } catch (err) {
-      console.warn('Supabase relationship upsert failed, syncing to local fallback:', err);
-    }
-    // Also save in local fallback
-    const local = loadRelsLocal();
-    const idx = local.findIndex(r => r.id === rel.id);
-    if (idx >= 0) {
-      local[idx] = rel;
-    } else {
-      local.push(rel);
-    }
-    persistRelsLocal(local);
+    await relationshipStore.load();
+    relationshipStore.add(rel);
   }
 
   async unlink(relationshipId: string): Promise<void> {
-    try {
-      const { error } = await supabase.from('relationships').delete().eq('id', relationshipId);
-      if (error) throw error;
-    } catch (err) {
-      console.warn('Supabase relationship delete failed, updating local fallback:', err);
-    }
-    // Update local fallback
-    const local = loadRelsLocal();
-    const next = local.filter(r => r.id !== relationshipId);
-    persistRelsLocal(next);
+    await relationshipStore.load();
+    relationshipStore.remove(relationshipId);
   }
 
   // ─── Entities (slice 2 & 3) ─────────────────────────────────────────────────────
