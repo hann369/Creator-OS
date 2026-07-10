@@ -34,6 +34,10 @@ export interface CollectionConfig<T> {
 export interface Collection<T> {
   getAll: () => T[];
   useItems: () => T[];
+  /** Whether the first remote load has settled. Reactive; for spinners. */
+  useLoaded: () => boolean;
+  /** Await the first remote load. Safe to call repeatedly — it only runs once. */
+  load: () => Promise<void>;
   add: (item: T) => void;
   update: (id: string, patch: Partial<T>) => void;
   remove: (id: string) => void;
@@ -49,35 +53,39 @@ export function createCollection<T>(cfg: CollectionConfig<T>): Collection<T> {
   };
 
   const store = createStore<T[]>(loadLocal());
-  let started = false;
+  const loaded = createStore<boolean>(false);
+  let inFlight: Promise<void> | null = null;
 
   const mirror = (items: T[]) => {
     try { localStorage.setItem(scopedKey(cfg.lsKey), JSON.stringify(items.map(cfg.toRow))); } catch { /* ignore */ }
   };
 
-  async function ensureLoaded() {
-    if (started) return;
-    started = true;
-    try {
-      const r = await supabase.from(cfg.table).select('*').eq('workspace_id', getActiveWorkspaceId());
-      if (r.error || !r.data) return;
+  function ensureLoaded(): Promise<void> {
+    if (inFlight) return inFlight;
+    inFlight = (async () => {
+      try {
+        const r = await supabase.from(cfg.table).select('*').eq('workspace_id', getActiveWorkspaceId());
+        if (r.error || !r.data) return;
 
-      if (r.data.length === 0 && cfg.seed && store.getState().length === 0) {
-        const seeded = cfg.seed();
-        if (seeded.length > 0) {
-          store.setState(seeded);
-          mirror(seeded);
-          for (const item of seeded) {
-            supabase.from(cfg.table).upsert(cfg.toRow(item), { onConflict: 'id' }).then(() => {}, () => {});
+        if (r.data.length === 0 && cfg.seed && store.getState().length === 0) {
+          const seeded = cfg.seed();
+          if (seeded.length > 0) {
+            store.setState(seeded);
+            mirror(seeded);
+            for (const item of seeded) {
+              supabase.from(cfg.table).upsert(cfg.toRow(item), { onConflict: 'id' }).then(() => {}, () => {});
+            }
+            return;
           }
-          return;
         }
-      }
 
-      const mapped = r.data.map(cfg.fromRow);
-      store.setState(mapped);
-      mirror(mapped);
-    } catch { /* offline → keep local */ }
+        const mapped = r.data.map(cfg.fromRow);
+        store.setState(mapped);
+        mirror(mapped);
+      } catch { /* offline → keep local */ }
+      finally { loaded.setState(true); }
+    })();
+    return inFlight;
   }
 
   function commit(next: T[], changed: T | undefined, isDelete = false, id?: string) {
@@ -92,9 +100,14 @@ export function createCollection<T>(cfg: CollectionConfig<T>): Collection<T> {
 
   return {
     getAll: () => store.getState(),
+    load: ensureLoaded,
     useItems: () => {
       useEffect(() => { void ensureLoaded(); }, []);
       return useStore(store);
+    },
+    useLoaded: () => {
+      useEffect(() => { void ensureLoaded(); }, []);
+      return useStore(loaded);
     },
     add: (item) => commit(upsertItem(store.getState(), item, cfg.idOf), item),
     update: (id, patch) => {
