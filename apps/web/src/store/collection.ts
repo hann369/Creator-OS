@@ -3,7 +3,7 @@ import { createStore } from './createStore.js';
 import { useStore } from './useStore.js';
 import { upsertItem, patchItem, removeItem } from './reducers.js';
 import { supabase } from '../lib/supabase.js';
-import { getActiveWorkspaceId, scopedKey } from '../lib/workspace.js';
+import { getActiveWorkspaceId, scopedKey, subscribeWorkspaceChange } from '../lib/workspace.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Entity collection (Roadmap Phase B).
@@ -98,6 +98,21 @@ export function createCollection<T>(cfg: CollectionConfig<T>): Collection<T> {
       finally { loaded.setState(true); }
     })();
     return inFlight;
+  }
+
+  // A project switch remounts the workspace subtree, but this store is module
+  // level and survives it — without this, the previous project's rows stay on
+  // screen and ensureLoaded's dedupe means they are never refetched. Deferred to
+  // a microtask because setActiveWorkspaceId runs during render.
+  if (!accountScoped) {
+    subscribeWorkspaceChange(() => {
+      queueMicrotask(() => {
+        inFlight = null;
+        loaded.setState(false);
+        store.setState(loadLocal());
+        void ensureLoaded();
+      });
+    });
   }
 
   function commit(next: T[], changed: T | undefined, isDelete = false, id?: string) {

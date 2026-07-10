@@ -2,6 +2,9 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createStore } from '../src/store/createStore.ts';
 import { upsertItem, patchItem, removeItem } from '../src/store/reducers.ts';
+import {
+  setActiveWorkspaceId, getActiveWorkspaceId, subscribeWorkspaceChange, scopedKey, isDefaultWorkspace,
+} from '../src/lib/workspace.ts';
 
 interface Row { id: string; title: string; n?: number }
 const idOf = (r: Row) => r.id;
@@ -58,4 +61,39 @@ test('removeItem deletes by id and no-ops when absent', () => {
   const items: Row[] = [{ id: 'a', title: 'A' }, { id: 'b', title: 'B' }];
   assert.deepEqual(removeItem(items, 'a', idOf).map(idOf), ['b']);
   assert.equal(removeItem(items, 'x', idOf), items, 'no-op keeps the same reference');
+});
+
+// ─── Workspace scope broadcast ───────────────────────────────────────────────
+// Module-level collection stores outlive the keyed WorkspaceProvider remount, so
+// they only learn about a project switch through this broadcast. Without it they
+// keep serving the previous project's rows.
+test('setActiveWorkspaceId notifies subscribers only when the project changes', () => {
+  let calls = 0;
+  const unsub = subscribeWorkspaceChange(() => { calls++; });
+
+  setActiveWorkspaceId('proj-a');
+  assert.equal(getActiveWorkspaceId(), 'proj-a');
+  assert.equal(calls, 1);
+
+  setActiveWorkspaceId('proj-a'); // same project → no reload
+  assert.equal(calls, 1);
+
+  setActiveWorkspaceId('proj-b');
+  assert.equal(calls, 2);
+
+  unsub();
+  setActiveWorkspaceId('main-space');
+  assert.equal(calls, 2, 'unsubscribed listeners are not called');
+});
+
+test('scopedKey namespaces every project except the default one', () => {
+  setActiveWorkspaceId('main-space');
+  assert.equal(scopedKey('pronoia_goals'), 'pronoia_goals');
+  assert.equal(isDefaultWorkspace(), true);
+
+  setActiveWorkspaceId('proj-x');
+  assert.equal(scopedKey('pronoia_goals'), 'pronoia_goals:proj-x');
+  assert.equal(isDefaultWorkspace(), false);
+
+  setActiveWorkspaceId('main-space'); // restore for any later test
 });

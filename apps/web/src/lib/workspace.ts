@@ -9,8 +9,23 @@ const DEFAULT_WORKSPACE_ID = 'main-space';
 
 let _activeWorkspaceId = DEFAULT_WORKSPACE_ID;
 
+const listeners = new Set<() => void>();
+
+/**
+ * Notified whenever the active project actually changes. Module-level stores
+ * outlive the keyed WorkspaceProvider remount, so they need this to drop the
+ * previous project's rows and reload.
+ */
+export function subscribeWorkspaceChange(listener: () => void): () => void {
+  listeners.add(listener);
+  return () => { listeners.delete(listener); };
+}
+
 export function setActiveWorkspaceId(id: string): void {
-  _activeWorkspaceId = id || DEFAULT_WORKSPACE_ID;
+  const next = id || DEFAULT_WORKSPACE_ID;
+  if (next === _activeWorkspaceId) return;
+  _activeWorkspaceId = next;
+  listeners.forEach((l) => l());
 }
 
 export function getActiveWorkspaceId(): string {

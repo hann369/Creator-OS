@@ -23,7 +23,8 @@ function Workspace() {
   }
 
   // Scope the data layer to this project BEFORE the workspace subtree mounts.
-  // The `key` forces a full remount (fresh loads) whenever the project changes.
+  // The `key` remounts the subtree, but the module-level stores outlive it — they
+  // reload off the change setActiveWorkspaceId broadcasts.
   setActiveWorkspaceId(active.id)
 
   return (
