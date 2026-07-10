@@ -29,6 +29,14 @@ export interface CollectionConfig<T> {
    * so offline-created items survive a first successful sync.
    */
   seed?: () => T[];
+  /**
+   * 'workspace' (default) loads only the active project's rows and namespaces
+   * the mirror per project. 'account' loads every row the user can read and
+   * keeps one un-namespaced mirror — for types that are deliberately
+   * cross-project, like ideas (the Telegram bot files them into any project and
+   * IdeationView filters client-side).
+   */
+  scope?: 'workspace' | 'account';
 }
 
 export interface Collection<T> {
@@ -44,9 +52,12 @@ export interface Collection<T> {
 }
 
 export function createCollection<T>(cfg: CollectionConfig<T>): Collection<T> {
+  const accountScoped = cfg.scope === 'account';
+  const storageKey = () => (accountScoped ? cfg.lsKey : scopedKey(cfg.lsKey));
+
   const loadLocal = (): T[] => {
     try {
-      const raw = localStorage.getItem(scopedKey(cfg.lsKey));
+      const raw = localStorage.getItem(storageKey());
       if (raw) return (JSON.parse(raw) as any[]).map(cfg.fromRow);
     } catch { /* ignore */ }
     return [];
@@ -57,14 +68,15 @@ export function createCollection<T>(cfg: CollectionConfig<T>): Collection<T> {
   let inFlight: Promise<void> | null = null;
 
   const mirror = (items: T[]) => {
-    try { localStorage.setItem(scopedKey(cfg.lsKey), JSON.stringify(items.map(cfg.toRow))); } catch { /* ignore */ }
+    try { localStorage.setItem(storageKey(), JSON.stringify(items.map(cfg.toRow))); } catch { /* ignore */ }
   };
 
   function ensureLoaded(): Promise<void> {
     if (inFlight) return inFlight;
     inFlight = (async () => {
       try {
-        const r = await supabase.from(cfg.table).select('*').eq('workspace_id', getActiveWorkspaceId());
+        const query = supabase.from(cfg.table).select('*');
+        const r = await (accountScoped ? query : query.eq('workspace_id', getActiveWorkspaceId()));
         if (r.error || !r.data) return;
 
         if (r.data.length === 0 && cfg.seed && store.getState().length === 0) {
