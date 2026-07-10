@@ -134,6 +134,21 @@ export function edgeToRelationship(edge: Edge): Relationship {
   };
 }
 
+/** Edge → WorldEdge. */
+export function edgeToWorldEdge(edge: Edge): WorldEdge {
+  const fullConfidence: ConfidenceMatrix = { extractionConfidence: 1, reasoningConfidence: 1, relationshipConfidence: 1, verificationConfidence: 1 };
+  return {
+    id: edge.id,
+    workspaceId: edge.workspaceId,
+    sourceId: edge.sourceId,
+    targetId: edge.targetId,
+    weight: edge.weight ?? 1.0,
+    relationshipType: edge.type as WorldEdgeType,
+    confidence: fullConfidence,
+    createdAt: edge.createdAt,
+  };
+}
+
 // ─── Content-card → graph node projection ─────────────────────────────────────
 // A pipeline card also lives in the graph as a "content mirror" node, so a piece
 // of content IS a node (see the mirror-node mechanism in the web WorkspaceContext).
@@ -147,6 +162,8 @@ export interface PipelineCardProjection {
   hook?: string;
   status: string;       // PipelineStatus, kept as string to avoid tight coupling
   attachments?: unknown[];
+  x?: number;
+  y?: number;
 }
 
 /** Deterministic id of a card's content-mirror node (derivable from the card id). */
@@ -169,11 +186,13 @@ export function pipelineCardToNode(card: PipelineCardProjection, workspaceId: st
     : card.status === 'production' ? 'growing'
     : card.status === 'idea' ? 'created'
     : 'growing';
+  const x = card.x ?? (240 + (h % 6) * 210);
+  const y = card.y ?? (600 + (h % 3) * 150);
   return {
     id: contentMirrorNodeId(card.id), workspaceId, type: 'project',
     label: card.title,
     description: card.hook || 'Content piece in the production pipeline.',
-    metadata: { cardId: card.id, isContentMirror: true, x: 240 + (h % 6) * 210, y: 600 + (h % 3) * 150 },
+    metadata: { cardId: card.id, isContentMirror: true, x, y },
     sourceCount: card.attachments?.length ?? 0,
     lifecycleState, origin: 'entity', createdAt: now, updatedAt: now,
   };

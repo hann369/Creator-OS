@@ -1,6 +1,6 @@
-import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
-import type { PipelineStatus, WorldNode, WorldEdge, CognitiveSession } from '@pronoia/domain';
-import { pipelineCardToNode, nodeToWorldNode, contentMirrorNodeId } from '@pronoia/domain';
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import type { PipelineStatus, CognitiveSession, Node, Edge, WorldNodeType, WorldEdgeType } from '@pronoia/domain';
+import { pipelineCardToNode, contentMirrorNodeId } from '@pronoia/domain';
 import { supabase } from '../lib/supabase.js';
 import { getActiveWorkspaceId } from '../lib/workspace.js';
 import { runIdentityLearning } from '../lib/identityLearning.js';
@@ -18,8 +18,8 @@ import {
 export type { ExtendedContentPipeline };
 
 export interface WorkspaceContextType {
-  nodes: WorldNode[];
-  edges: WorldEdge[];
+  nodes: Node[];
+  edges: Edge[];
   pipelineCards: ExtendedContentPipeline[];
   activeSession: CognitiveSession | null;
   activityLogs: string[];
@@ -28,10 +28,10 @@ export interface WorkspaceContextType {
   
   // Graph actions
   createNode: (name: string, type: string, x: number, y: number) => void;
-  updateNode: (id: string, updates: Partial<WorldNode>) => void;
+  updateNode: (id: string, updates: Partial<Node>) => void;
   deleteNode: (id: string) => void;
   createEdge: (sourceId: string, targetId: string, relationshipType: string) => void;
-  updateEdge: (id: string, updates: Partial<WorldEdge>) => void;
+  updateEdge: (id: string, updates: Partial<Edge>) => void;
   deleteEdge: (id: string) => void;
 
   // Pipeline actions
@@ -51,32 +51,39 @@ export interface WorkspaceContextType {
 
 const WorkspaceContext = createContext<WorkspaceContextType | undefined>(undefined);
 
-
 // ─── Single Source of Truth: card ⇄ node mirror ─────────────────────────────
 // Every pipeline card owns a deterministic "mirror" node in the World Model, so
 // a card IS a graph node (and a document, and an executive candidate). The id is
 // derivable from the card id, so we never need a foreign-key column.
 const mirrorNodeId = contentMirrorNodeId;
 
-// Deterministic placement from the card id keeps mirror nodes stable across loads
-// and clustered in a "content lane" beneath the concept cloud. The projection now
-// lives once in the tested domain layer (pipelineCardToNode); we re-shape it to the
-// legacy WorldNode via nodeToWorldNode.
-function buildMirrorNode(card: { id: string; title: string; hook?: string; status: string; attachments?: unknown[] }): WorldNode {
-  return nodeToWorldNode(pipelineCardToNode(card, getActiveWorkspaceId()));
-}
-
-// ─── Supabase Row ↔ Domain Model mappers moved to ../store/graph ────────────────
-
-// ─── Provider ────────────────────────────────────────────────────────────────
-
 export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   // Graph and pipeline state live in the shared collections (Roadmap Phase B):
   // module-level, project-scoped, offline-mirrored, and loaded on first read.
   // This provider owns the realtime subscriptions and the domain actions.
-  const nodes = nodeStore.useItems();
+  const rawNodes = nodeStore.useItems();
   const edges = edgeStore.useItems();
   const pipelineCards = cardStore.useItems();
+
+  // 1. Filter out any legacy 'card:*' nodes from rawNodes
+  // 2. Derive mirror nodes from pipelineCards in-memory
+  const nodes = useMemo(() => {
+    const conceptNodes = rawNodes.filter(n => !n.id.startsWith('card:'));
+    const mirrorNodes = pipelineCards.map(c => {
+      const unifiedNode = pipelineCardToNode(c, getActiveWorkspaceId());
+      // Override deterministic positions with card's actual positions if present
+      if (c.x != null && c.y != null) {
+        unifiedNode.metadata = {
+          ...unifiedNode.metadata,
+          x: c.x,
+          y: c.y
+        };
+      }
+      return unifiedNode;
+    });
+    return [...conceptNodes, ...mirrorNodes];
+  }, [rawNodes, pipelineCards]);
+
   // Each useLoaded() is a hook — read all three before combining them, or `&&`
   // short-circuits and the hook order changes between renders.
   const nodesLoaded = nodeStore.useLoaded();
@@ -142,17 +149,6 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     return () => { supabase.removeChannel(channel); };
   }, []);
 
-  // ─── Mirror-node backfill (single source of truth) ─────────────────────────
-  // Any card without a graph node gets one, so existing/legacy cards also live in
-  // the World Model. Runs after load; self-terminates once every card is mirrored.
-  useEffect(() => {
-    if (isLoading) return;
-    const missing = pipelineCards.filter(c => !nodes.some(n => n.id === mirrorNodeId(c.id)));
-    if (missing.length === 0) return;
-    // add() upserts, so a re-run never duplicates or errors on an existing row.
-    missing.map(buildMirrorNode).forEach(mn => nodeStore.add(mn));
-  }, [isLoading, pipelineCards, nodes]);
-
   // ─── Session persistence (stays local) ────────────────────────────────────
   useEffect(() => {
     if (activeSession) localStorage.setItem('pronoia_session', JSON.stringify(activeSession));
@@ -180,18 +176,18 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
   // ─── Graph Actions ─────────────────────────────────────────────────────────
   const createNode = useCallback((name: string, type: string, x: number, y: number) => {
-    const newNode: WorldNode = {
+    const newNode: Node = {
       id: `node-${crypto.randomUUID().slice(0, 8)}`,
       workspaceId: getActiveWorkspaceId(),
-      name,
-      type: type as any,
+      type: type as WorldNodeType,
+      label: name,
       description: 'Custom created concept node.',
       metadata: { x, y },
       confidence: { extractionConfidence: 1.0, reasoningConfidence: 1.0, relationshipConfidence: 1.0, verificationConfidence: 1.0 },
       sourceCount: 1,
-      lastVerified: new Date(),
       derivedFrom: [],
       lifecycleState: 'created',
+      origin: 'world',
       createdAt: new Date(),
       updatedAt: new Date()
     };
@@ -199,40 +195,54 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     addActivityLog(`Created concept: ${name}`);
   }, [addActivityLog]);
 
-  const updateNode = useCallback((id: string, updates: Partial<WorldNode>) => {
-    nodeStore.update(id, updates);
+  const updateNode = useCallback((id: string, updates: Partial<Node>) => {
+    if (id.startsWith('card:')) {
+      const cardId = id.substring(5);
+      if (updates.metadata && (updates.metadata.x !== undefined || updates.metadata.y !== undefined)) {
+        cardStore.update(cardId, {
+          x: updates.metadata.x !== undefined ? Number(updates.metadata.x) : undefined,
+          y: updates.metadata.y !== undefined ? Number(updates.metadata.y) : undefined
+        });
+      }
+    } else {
+      nodeStore.update(id, updates);
+    }
   }, []);
 
   const deleteNode = useCallback((id: string) => {
-    nodeStore.remove(id);
-    // An edge whose endpoint is gone is unreadable, so the cascade deletes the
-    // rows too rather than only dropping them from view.
+    if (id.startsWith('card:')) {
+      const cardId = id.substring(5);
+      cardStore.remove(cardId);
+      addActivityLog(`Deleted card: ${cardId}`);
+    } else {
+      nodeStore.remove(id);
+      addActivityLog(`Deleted node: ${id}`);
+    }
     edgesTouching(id).forEach(e => edgeStore.remove(e.id));
-    addActivityLog(`Deleted node: ${id}`);
   }, [addActivityLog]);
 
   const createEdge = useCallback((sourceId: string, targetId: string, relationshipType: string) => {
-    const newEdge: WorldEdge = {
+    const newEdge: Edge = {
       id: `edge-${crypto.randomUUID().slice(0, 8)}`,
       workspaceId: getActiveWorkspaceId(),
       sourceId,
       targetId,
-      weight: 1.0,
-      relationshipType: relationshipType as any,
-      confidence: { extractionConfidence: 1.0, reasoningConfidence: 1.0, relationshipConfidence: 1.0, verificationConfidence: 1.0 },
+      type: relationshipType as WorldEdgeType,
+      origin: 'world',
       createdAt: new Date()
     };
     edgeStore.add(newEdge);
     addActivityLog(`Linked: ${sourceId} → ${targetId} (${relationshipType})`);
   }, [addActivityLog]);
 
-  const updateEdge = useCallback((id: string, updates: Partial<WorldEdge>) => {
+  const updateEdge = useCallback((id: string, updates: Partial<Edge>) => {
     edgeStore.update(id, updates);
   }, []);
 
   const deleteEdge = useCallback((id: string) => {
     edgeStore.remove(id);
-  }, []);
+    addActivityLog(`Deleted connection: ${id}`);
+  }, [addActivityLog]);
 
   // ─── Pipeline Actions ──────────────────────────────────────────────────────
   const createCard = useCallback((title: string, status: PipelineStatus): string => {
@@ -255,32 +265,18 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       updatedAt: new Date()
     };
     cardStore.add(newCard);
-
-    // Single source of truth: the card also enters the World Model as a node.
-    const mNode = buildMirrorNode(newCard);
-    if (!nodeStore.getAll().some(n => n.id === mNode.id)) nodeStore.add(mNode);
-
     addActivityLog(`Created draft: ${title}`);
     return newCard.id;
   }, [addActivityLog]);
 
   const updateCard = useCallback((id: string, updates: Partial<ExtendedContentPipeline>) => {
     cardStore.update(id, updates);
-
-    // Keep the mirror node in sync (title → node name).
-    if (updates.title !== undefined) {
-      nodeStore.update(mirrorNodeId(id), { name: updates.title });
-    }
   }, []);
 
   const deleteCard = useCallback((id: string) => {
     cardStore.remove(id);
-
-    // Remove the mirror node and any edges touching it.
     const mId = mirrorNodeId(id);
-    nodeStore.remove(mId);
     edgesTouching(mId).forEach(e => edgeStore.remove(e.id));
-
     addActivityLog(`Archived card: ${id}`);
   }, [addActivityLog]);
 
@@ -312,32 +308,31 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     const baseY = ((mirror?.metadata?.y as number) ?? 400) - 180;
 
     const newId = `node-${crypto.randomUUID().slice(0, 8)}`;
-    const newNode: WorldNode = {
+    const newNode: Node = {
       id: newId,
       workspaceId: getActiveWorkspaceId(),
-      name: card.title,
-      type: type as WorldNode['type'],
+      type: type as WorldNodeType,
+      label: card.title,
       description: card.hook || `Promoted from content card.`,
       metadata: { x: baseX + 60, y: baseY },
       confidence: { extractionConfidence: 1, reasoningConfidence: 1, relationshipConfidence: 1, verificationConfidence: 1 },
       sourceCount: 1,
-      lastVerified: new Date(),
       derivedFrom: [mId],
       lifecycleState: 'created',
+      origin: 'world',
       createdAt: new Date(),
       updatedAt: new Date()
     };
     nodeStore.add(newNode);
 
     const relationshipType = type === 'goal' ? 'goal_supports' : 'references';
-    const newEdge: WorldEdge = {
+    const newEdge: Edge = {
       id: `edge-${crypto.randomUUID().slice(0, 8)}`,
       workspaceId: getActiveWorkspaceId(),
       sourceId: mId,
       targetId: newId,
-      weight: 1.0,
-      relationshipType: relationshipType as WorldEdge['relationshipType'],
-      confidence: { extractionConfidence: 1, reasoningConfidence: 1, relationshipConfidence: 1, verificationConfidence: 1 },
+      type: relationshipType as WorldEdgeType,
+      origin: 'world',
       createdAt: new Date()
     };
     edgeStore.add(newEdge);

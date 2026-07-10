@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { supabaseAdmin } from '../supabase.js';
+import { resolveOwner } from '../auth.js';
 import { rowToEntry } from '../ingestionStores.js';
 import { enqueueIngestion, processJob } from '../queues/ingestionQueue.js';
 import {
@@ -18,14 +19,6 @@ const DEFAULT_WORKSPACE = 'main-space';
 
 export const libraryRouter = Router();
 
-async function resolveOwner(req: any): Promise<{ ownerId: string } | null> {
-  const token = (req.headers.authorization || '').replace(/^Bearer\s+/i, '');
-  if (!token) return null;
-  const { data, error } = await supabaseAdmin.auth.getUser(token);
-  if (error || !data?.user) return null;
-  return { ownerId: data.user.id };
-}
-
 // ─── POST /ingest — resolve + enqueue ──────────────────────────────────────────
 libraryRouter.post('/ingest', async (req, res) => {
   const auth = await resolveOwner(req);
@@ -37,16 +30,9 @@ libraryRouter.post('/ingest', async (req, res) => {
   const workspaceId = String(req.body?.workspaceId ?? DEFAULT_WORKSPACE);
   try {
     resolveSource(url); // validate up-front so the client gets a clean 400
-    const entryId = plannedContentId(url);
-    
-    if (process.env.VERCEL) {
-      console.log(`[ingest] Vercel environment detected. Running ingestion synchronously for ${url}`);
-      await processJob({ rawUrl: url, workspaceId, ownerId: auth.ownerId });
-      return res.status(200).json({ entryId, status: 'completed' });
-    } else {
-      enqueueIngestion({ rawUrl: url, workspaceId, ownerId: auth.ownerId });
-      return res.status(202).json({ entryId, status: 'queued' });
-    }
+    const entryId = await enqueueIngestion({ rawUrl: url, workspaceId, ownerId: auth.ownerId });
+    const isVercel = !!process.env.VERCEL;
+    return res.status(isVercel ? 200 : 202).json({ entryId, status: isVercel ? 'completed' : 'queued' });
   } catch (err) {
     if (err instanceof UnsupportedSourceError) {
       return res.status(400).json({

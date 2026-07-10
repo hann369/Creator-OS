@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
-import { Target, Plus, Trash2, Check, Archive, RotateCcw } from 'lucide-react';
+import { Target, Plus, Trash2, Check, Archive, RotateCcw, Eye } from 'lucide-react';
 import { useGoals, type Goal, type GoalStatus } from '../hooks/useGoals.js';
+import { nodes } from '../store/graph.js';
+import { selectNode } from '../store/selection.js';
 
 const inputStyle: React.CSSProperties = { fontSize: '13px', border: '1px solid var(--border-color)', padding: '9px 12px', borderRadius: '8px', outline: 'none', background: 'transparent', width: '100%', boxSizing: 'border-box' };
 
@@ -13,6 +15,9 @@ const GoalCard: React.FC<{
 }> = ({ goal, onUpdate, onDelete }) => {
   const pct = Math.round(goal.progress * 100);
   const achieved = goal.status === 'achieved';
+  const graphNodes = nodes.useItems();
+  const matchedNode = graphNodes.find(n => n.id === goal.id || n.label.toLowerCase() === goal.title.toLowerCase());
+
   return (
     <div style={{ background: 'rgba(0,0,0,0.015)', border: '1px solid var(--border-color)', borderRadius: '14px', padding: '20px 22px', marginBottom: '14px', opacity: goal.status === 'archived' ? 0.55 : 1 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '12px' }}>
@@ -21,6 +26,9 @@ const GoalCard: React.FC<{
           {goal.description && <p style={{ fontSize: '12px', color: 'var(--text-secondary)', margin: '6px 0 0', lineHeight: 1.6 }}>{goal.description}</p>}
         </div>
         <div style={{ display: 'flex', gap: '6px', flexShrink: 0 }}>
+          {matchedNode && (
+            <button title="Im Brain anzeigen" onClick={() => selectNode(matchedNode.id)} style={iconBtn}><Eye size={14} /></button>
+          )}
           {goal.status !== 'achieved' ? (
             <button title="Mark achieved" onClick={() => onUpdate({ status: 'achieved', progress: 1 })} style={iconBtn}><Check size={14} /></button>
           ) : (

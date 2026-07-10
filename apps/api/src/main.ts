@@ -9,7 +9,9 @@ import { socialRouter } from './controllers/social.js';
 import { telegramRouter } from './controllers/telegram.js';
 import { libraryRouter } from './controllers/library.js';
 import { coursesRouter, stripeWebhookHandler } from './controllers/courses.js';
+import { mcpRouter } from './controllers/mcp.js';
 import { ThinkingWebSocketController } from './controllers/thinking.js';
+import { repositoryRouter } from './controllers/repository.js';
 
 const app = express();
 
@@ -28,6 +30,12 @@ app.use('/api/v1/social', socialRouter);
 app.use('/api/v1/telegram', telegramRouter);
 app.use('/api/v1/library', libraryRouter);
 app.use('/api/v1/courses', coursesRouter);
+app.use('/api/v1/repository', repositoryRouter);
+
+// The Claude connector. Mounted at the root — its paths (/mcp and
+// /.well-known/oauth-protected-resource) are fixed by the MCP spec and RFC 9728,
+// so they cannot live under /api/v1. It needs the parsed JSON body above.
+app.use(mcpRouter);
 
 const server = createServer(app);
 
@@ -49,10 +57,13 @@ server.on('upgrade', (request, socket, head) => {
   }
 });
 
+import { bootstrapQueue } from './queues/ingestionQueue.js';
+
 const PORT = process.env.PORT || 3000;
 if (!process.env.VERCEL) {
   server.listen(PORT, () => {
     console.log(`Pronoia API Server running at http://localhost:${PORT}`);
+    void bootstrapQueue();
   });
 }
 

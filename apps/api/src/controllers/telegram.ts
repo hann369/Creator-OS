@@ -367,7 +367,7 @@ async function handleContentIngestion(link: Link, chatId: number, url: string): 
   const workspaceId = link.active_project_id ?? DEFAULT_WORKSPACE;
   try {
     const source = resolveSource(url);
-    enqueueIngestion({ rawUrl: url, workspaceId, ownerId: link.owner_id });
+    await enqueueIngestion({ rawUrl: url, workspaceId, ownerId: link.owner_id });
     await tgSend(
       chatId,
       `🎬 _Analysiere ${md(source.platform)}-Content…_\nHook, Pattern & Takeaways landen gleich in deiner *Library*.`,

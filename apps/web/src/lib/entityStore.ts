@@ -7,9 +7,9 @@ import type {
   Moodboard,
   Color,
   BoardFonts,
-  MoodSection,
-  WorldNode
+  MoodSection
 } from '@pronoia/domain';
+import { entityToNode } from '@pronoia/domain';
 import { supabase } from './supabase.js';
 import { getActiveWorkspaceId, scopedKey } from './workspace.js';
 import { relationships as relationshipStore } from '../store/relationships.js';
@@ -381,7 +381,7 @@ export class SupabaseEntityStore implements EntityStore {
     // World node types
     if (entity.type === 'concept' || entity.type === 'goal' || entity.type === 'project') {
       await nodeStore.load();
-      nodeStore.add(entity as unknown as WorldNode);
+      nodeStore.add(entityToNode(entity));
       return;
     }
 

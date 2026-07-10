@@ -1,8 +1,10 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Compass, Award, X, Activity, Link as LinkIcon, FileText, Target, ArrowRight, ArrowLeft } from 'lucide-react';
 import { useWorkspace } from '../context/WorkspaceContext.js';
-import type { WorldNode } from '@pronoia/domain';
+import type { Node } from '@pronoia/domain';
 import { isContentMirrorNode } from '@pronoia/domain';
+import { useStore } from '../store/useStore.js';
+import { selectionStore } from '../store/selection.js';
 
 interface CognitionViewProps {
   onOpenCard?: (id: string, name: string) => void;
@@ -19,10 +21,14 @@ export const CognitionView: React.FC<CognitionViewProps> = ({ onOpenCard }) => {
     deleteEdge
   } = useWorkspace();
 
-  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const selection = useStore(selectionStore);
+  const selectedNodeId = selection.selectedNodeId;
+  const setSelectedNodeId = (id: string | null) => {
+    selectionStore.setState((prev) => ({ ...prev, selectedNodeId: id }));
+  };
 
   // Local drag nodes cache to ensure smooth mouse dragging (without context lag)
-  const [localNodes, setLocalNodes] = useState<WorldNode[]>([]);
+  const [localNodes, setLocalNodes] = useState<Node[]>([]);
   
   useEffect(() => {
     setLocalNodes(nodes);
@@ -54,23 +60,23 @@ export const CognitionView: React.FC<CognitionViewProps> = ({ onOpenCard }) => {
   const relNode = (id: string) => localNodes.find(n => n.id === id);
   const incoming = selectedNode ? edges.filter(e => e.targetId === selectedNode.id) : [];
   const outgoing = selectedNode ? edges.filter(e => e.sourceId === selectedNode.id) : [];
-  const connectedNodes: WorldNode[] = selectedNode
+  const connectedNodes: Node[] = selectedNode
     ? [...incoming.map(e => e.sourceId), ...outgoing.map(e => e.targetId)]
         .map(relNode)
-        .filter((n): n is WorldNode => !!n)
+        .filter((n): n is Node => !!n)
     : [];
   const contentUsing = connectedNodes.filter(isContentMirrorNode);
   const goalsDependent = connectedNodes.filter(n => n.type === 'goal' && n.id !== selectedNode?.id);
 
-  const renderRelRow = (edge: typeof edges[number], node: WorldNode, dir: 'in' | 'out') => (
+  const renderRelRow = (edge: typeof edges[number], node: Node, dir: 'in' | 'out') => (
     <div key={edge.id} onClick={() => setSelectedNodeId(node.id)}
       style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '11px', padding: '8px 12px', background: 'rgba(0,0,0,0.02)', borderRadius: '4px', cursor: 'pointer' }}
       onMouseEnter={(e) => e.currentTarget.style.background = 'var(--accent-light)'}
       onMouseLeave={(e) => e.currentTarget.style.background = 'rgba(0,0,0,0.02)'}>
       <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
         {dir === 'in' ? <ArrowLeft size={11} color="var(--accent-color)" /> : <ArrowRight size={11} color="var(--accent-color)" />}
-        <span style={{ fontWeight: 600, color: 'var(--accent-color)', fontSize: '9px', fontFamily: 'var(--font-mono)' }}>{edge.relationshipType.toUpperCase()}</span>
-        <span style={{ color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{node.name}</span>
+        <span style={{ fontWeight: 600, color: 'var(--accent-color)', fontSize: '9px', fontFamily: 'var(--font-mono)' }}>{edge.type.toUpperCase()}</span>
+        <span style={{ color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{node.label}</span>
       </div>
       <button style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)', fontSize: '10px', flexShrink: 0 }}
         onClick={(e) => { e.stopPropagation(); deleteEdge(edge.id); }}>×</button>
@@ -78,10 +84,10 @@ export const CognitionView: React.FC<CognitionViewProps> = ({ onOpenCard }) => {
   );
 
   // Helper coordinate getters
-  const getCoordinates = (node: WorldNode) => {
+  const getCoordinates = (node: Node) => {
     return {
-      x: node.metadata?.x ?? 300,
-      y: node.metadata?.y ?? 300
+      x: (node.metadata?.x as number) ?? 300,
+      y: (node.metadata?.y as number) ?? 300
     };
   };
 
@@ -137,7 +143,7 @@ export const CognitionView: React.FC<CognitionViewProps> = ({ onOpenCard }) => {
     setConnectingSourceId(null);
   };
 
-  const handleNodeMouseDown = (e: React.MouseEvent, node: WorldNode) => {
+  const handleNodeMouseDown = (e: React.MouseEvent, node: Node) => {
     e.stopPropagation();
     setSelectedNodeId(node.id);
     setDraggedNodeId(node.id);
@@ -355,7 +361,7 @@ export const CognitionView: React.FC<CognitionViewProps> = ({ onOpenCard }) => {
                   filter: 'drop-shadow(0px 1px 2px white)'
                 }}
               >
-                {node.name}
+                {node.label}
               </text>
             </g>
           );
@@ -448,10 +454,10 @@ export const CognitionView: React.FC<CognitionViewProps> = ({ onOpenCard }) => {
 
             <div>
               <h3 className="title-serif" style={{ fontSize: '28px', color: 'var(--text-primary)', marginBottom: '8px' }}>
-                {selectedNode.name}
+                {selectedNode.label}
               </h3>
               <span className="label-mono" style={{ fontSize: '10px' }}>
-                {isContentMirrorNode(selectedNode) ? 'CONTENT' : selectedNode.type.toUpperCase()} • Lifecycle: {selectedNode.lifecycleState.toUpperCase()}
+                {isContentMirrorNode(selectedNode) ? 'CONTENT' : selectedNode.type.toUpperCase()} • Lifecycle: {selectedNode.lifecycleState?.toUpperCase() || 'CREATED'}
               </span>
             </div>
 
@@ -459,7 +465,7 @@ export const CognitionView: React.FC<CognitionViewProps> = ({ onOpenCard }) => {
             {selectedNode.metadata?.cardId && onOpenCard && (
               <button
                 className="btn-sage-primary"
-                onClick={() => onOpenCard(selectedNode.metadata!.cardId as string, selectedNode.name)}
+                onClick={() => onOpenCard(selectedNode.metadata!.cardId as string, selectedNode.label || '')}
                 style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', padding: '10px', fontSize: '12px' }}
               >
                 <FileText size={13} /> Open workspace
@@ -485,7 +491,7 @@ export const CognitionView: React.FC<CognitionViewProps> = ({ onOpenCard }) => {
                 {isContentMirrorNode(selectedNode)
                   ? 'Ein Content-Stück aus der Pipeline, das im Wissensgraph lebt. '
                   : `Erfasst als ${selectedNode.type}. `}
-                {selectedNode.sourceCount > 0 && `Gestützt von ${selectedNode.sourceCount} Quelle(n). `}
+                {(selectedNode.sourceCount ?? 0) > 0 && `Gestützt von ${selectedNode.sourceCount} Quelle(n). `}
                 {incoming.length + outgoing.length > 0
                   ? `${incoming.length + outgoing.length} Verbindung(en) im Graph.`
                   : 'Noch keine Verbindungen — verbinde ihn mit anderen Gedanken.'}
@@ -521,9 +527,9 @@ export const CognitionView: React.FC<CognitionViewProps> = ({ onOpenCard }) => {
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                   {contentUsing.map(n => (
                     <div key={n.id}
-                      onClick={() => onOpenCard && n.metadata?.cardId ? onOpenCard(n.metadata.cardId as string, n.name) : setSelectedNodeId(n.id)}
+                      onClick={() => onOpenCard && n.metadata?.cardId ? onOpenCard(n.metadata.cardId as string, n.label || '') : setSelectedNodeId(n.id)}
                       style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '11px', padding: '8px 12px', background: 'rgba(15,90,71,0.05)', borderRadius: '4px', cursor: 'pointer' }}>
-                      <span style={{ color: 'var(--text-primary)', fontWeight: 500 }}>{n.name}</span>
+                      <span style={{ color: 'var(--text-primary)', fontWeight: 500 }}>{n.label}</span>
                       <span style={{ fontSize: '9px', color: 'var(--accent-color)', fontFamily: 'var(--font-mono)' }}>öffnen →</span>
                     </div>
                   ))}
@@ -542,7 +548,7 @@ export const CognitionView: React.FC<CognitionViewProps> = ({ onOpenCard }) => {
                     <div key={n.id} onClick={() => setSelectedNodeId(n.id)}
                       style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '11px', padding: '8px 12px', background: 'rgba(0,0,0,0.02)', borderRadius: '4px', cursor: 'pointer' }}>
                       <Target size={11} color="var(--accent-color)" />
-                      <span style={{ color: 'var(--text-primary)' }}>{n.name}</span>
+                      <span style={{ color: 'var(--text-primary)' }}>{n.label}</span>
                     </div>
                   ))}
                 </div>
@@ -594,7 +600,7 @@ export const CognitionView: React.FC<CognitionViewProps> = ({ onOpenCard }) => {
                 <Activity size={13} color="var(--accent-color)" /> Activity
               </h4>
               <p style={{ fontSize: '11px', color: 'var(--text-secondary)', lineHeight: '1.5' }}>
-                Last activity: {selectedNode.lastActivityAt ? new Date(selectedNode.lastActivityAt).toLocaleDateString() : 'Just now'} • Active core parameter index.
+                Last activity: {selectedNode.updatedAt ? new Date(selectedNode.updatedAt).toLocaleDateString() : 'Just now'} • Active core parameter index.
               </p>
             </div>
 

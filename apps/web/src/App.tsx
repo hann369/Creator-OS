@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { X } from 'lucide-react';
 import { KnowledgeEvaluator, UserBehaviorLearner, ExecutiveFunctionEngine } from '@pronoia/cognition';
-import { isContentMirrorNode } from '@pronoia/domain';
+import { isContentMirrorNode, nodeToWorldNode, edgeToWorldEdge } from '@pronoia/domain';
 import type { ReasoningResult } from '@pronoia/ai';
 
 import { EditorView } from './views/EditorView.js';
@@ -25,6 +25,8 @@ import { useGoals } from './hooks/useGoals.js';
 import { displayName } from './lib/user.js';
 import { reason } from './lib/reasoning.js';
 import type { ProjectItem } from './hooks/useProjects.js';
+import { useStore } from './store/useStore.js';
+import { selectionStore } from './store/selection.js';
 
 interface AppProps {
   project: ProjectItem;
@@ -48,8 +50,17 @@ export const App: React.FC<AppProps> = ({ project, onExitProject }) => {
   // goal, no longer a hardcoded "Reach 100k Subscribers".
   const primaryGoal = useMemo(() => goals.find(g => g.status === 'active') ?? goals[0] ?? null, [goals]);
 
-  const [activeTab, setActiveTab] = useState<'morning' | 'pipeline' | 'brain'>('morning');
-  const [resource, setResource] = useState<ResourceView | null>(null);
+  const selection = useStore(selectionStore);
+  const activeTab = selection.activeView === 'pipeline' || selection.activeView === 'brain' ? selection.activeView : 'morning';
+  const resource = selection.activeView !== 'morning' && selection.activeView !== 'pipeline' && selection.activeView !== 'brain' ? selection.activeView as ResourceView : null;
+
+  const setActiveTab = (tab: 'morning' | 'pipeline' | 'brain') => {
+    selectionStore.setState(prev => ({ ...prev, activeView: tab }));
+  };
+  const setResource = (res: ResourceView | null) => {
+    selectionStore.setState(prev => ({ ...prev, activeView: res }));
+  };
+
   const isMobile = useIsMobile();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [activeModal, setActiveModal] = useState<'settings' | null>(null);
@@ -66,9 +77,16 @@ export const App: React.FC<AppProps> = ({ project, onExitProject }) => {
   // Full-screen focused writing mode state
   const [focusedCardId, setFocusedCardId] = useState<string | null>(null);
   const [focusedCardTitle, setFocusedCardTitle] = useState('');
-  const [selectedMoodboardId, setSelectedMoodboardId] = useState<string | null>(null);
+  const selectedMoodboardId = selection.selectedMoodboardId;
+  const setSelectedMoodboardId = (id: string | null) => {
+    selectionStore.setState(prev => ({ ...prev, selectedMoodboardId: id }));
+  };
 
-  const qualityMetrics = useMemo(() => KnowledgeEvaluator.evaluate(nodes, edges), [nodes, edges]);
+  const qualityMetrics = useMemo(() => {
+    const legacyNodes = nodes.map(nodeToWorldNode);
+    const legacyEdges = edges.map(edgeToWorldEdge);
+    return KnowledgeEvaluator.evaluate(legacyNodes, legacyEdges);
+  }, [nodes, edges]);
 
   // ─── Real strategic opportunities, derived from the actual content pipeline ───
   // Every unpublished card is a candidate action. This is the single source of
@@ -112,7 +130,9 @@ export const App: React.FC<AppProps> = ({ project, onExitProject }) => {
         decisionVector: undefined as ReturnType<typeof ExecutiveFunctionEngine.evaluateMultiObjective>[number] | undefined
       };
     }
-    const vectors = ExecutiveFunctionEngine.evaluateMultiObjective(opportunities, executiveContext, nodes, edges);
+    const legacyNodes = nodes.map(nodeToWorldNode);
+    const legacyEdges = edges.map(edgeToWorldEdge);
+    const vectors = ExecutiveFunctionEngine.evaluateMultiObjective(opportunities, executiveContext, legacyNodes, legacyEdges);
     const best = [...vectors].sort((a, b) => b.compositeUtility - a.compositeUtility)[0];
     return {
       opportunityId: best.opportunityId,
@@ -138,7 +158,7 @@ export const App: React.FC<AppProps> = ({ project, onExitProject }) => {
     return {
       maturedConcepts: concepts.filter(n => n.lifecycleState === 'growing').length,
       newThoughts: concepts.filter(n => n.lifecycleState === 'created').length,
-      contradictions: edges.filter(e => e.relationshipType === 'contradicts').length,
+      contradictions: edges.filter(e => e.type === 'contradicts').length,
       openOpportunities: concepts.filter(n => n.type === 'opportunity').length
     };
   }, [nodes, edges]);
@@ -178,7 +198,9 @@ export const App: React.FC<AppProps> = ({ project, onExitProject }) => {
     // Commit: this is the moment a decision is actually made, so log it to
     // Executive Memory (the side-effecting path) exactly once.
     if (opportunities.length > 0) {
-      ExecutiveFunctionEngine.prioritize(opportunities, executiveContext, nodes, edges);
+      const legacyNodes = nodes.map(nodeToWorldNode);
+      const legacyEdges = edges.map(edgeToWorldEdge);
+      ExecutiveFunctionEngine.prioritize(opportunities, executiveContext, legacyNodes, legacyEdges);
     }
 
     // Focus the card the executive engine actually chose as today's priority.

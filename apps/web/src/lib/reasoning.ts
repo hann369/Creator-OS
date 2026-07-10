@@ -1,5 +1,5 @@
 import type { ChatMessage, ReasoningResult } from '@pronoia/ai';
-import type { WorldNode, WorldEdge } from '@pronoia/domain';
+import type { Node, Edge } from '@pronoia/domain';
 import type { ExtendedContentPipeline } from '../context/WorkspaceContext.js';
 import { EDITING_CODEX } from './editingCodex.js';
 
@@ -57,8 +57,8 @@ export const reasoningProvider = {
 };
 
 export interface ReasoningContext {
-  nodes: WorldNode[];
-  edges: WorldEdge[];
+  nodes: Node[];
+  edges: Edge[];
   cards: ExtendedContentPipeline[];
 }
 
@@ -76,7 +76,7 @@ function retrieve(query: string, ctx: ReasoningContext) {
   };
 
   const rankedNodes = ctx.nodes
-    .map(n => ({ n, s: score(`${n.name} ${n.description ?? ''} ${n.type}`) }))
+    .map(n => ({ n, s: score(`${n.label} ${n.description ?? ''} ${n.type}`) }))
     .filter(x => x.s > 0)
     .sort((a, b) => b.s - a.s)
     .slice(0, 8)
@@ -122,16 +122,16 @@ export async function reason(query: string, ctx: ReasoningContext): Promise<Reas
     .map(x => x.c);
 
   const nodeLines = contextNodes
-    .map(n => `- [${n.type}] ${n.name}: ${n.description ?? ''} (Zustand: ${n.lifecycleState})`)
+    .map(n => `- [${n.type}] ${n.label}: ${n.description ?? ''} (Zustand: ${n.lifecycleState})`)
     .join('\n');
 
   const contextNodeIds = new Set(contextNodes.map(n => n.id));
   const edgeLines = ctx.edges
     .filter(e => contextNodeIds.has(e.sourceId) || contextNodeIds.has(e.targetId))
     .map(e => {
-      const s = ctx.nodes.find(n => n.id === e.sourceId)?.name ?? e.sourceId;
-      const t = ctx.nodes.find(n => n.id === e.targetId)?.name ?? e.targetId;
-      return `- ${s} —${e.relationshipType}→ ${t}`;
+      const s = ctx.nodes.find(n => n.id === e.sourceId)?.label ?? e.sourceId;
+      const t = ctx.nodes.find(n => n.id === e.targetId)?.label ?? e.targetId;
+      return `- ${s} —${e.type}→ ${t}`;
     })
     .slice(0, 20)
     .join('\n');
@@ -172,7 +172,7 @@ export async function reason(query: string, ctx: ReasoningContext): Promise<Reas
   }
 
   const used = [
-    ...contextNodes.map(n => n.name),
+    ...contextNodes.map(n => n.label),
     ...contextCards.map(c => c.title),
     ...contextCodex.map(c => c.title)
   ];
@@ -203,15 +203,15 @@ export async function actOnSelection(action: InlineAction, selectedText: string,
   const { contextNodes, contextCards } = retrieve(selectedText, ctx);
 
   const nodeLines = contextNodes
-    .map(n => `- [${n.type}] ${n.name}: ${n.description ?? ''}`)
+    .map(n => `- [${n.type}] ${n.label}: ${n.description ?? ''}`)
     .join('\n');
   const contextNodeIds = new Set(contextNodes.map(n => n.id));
   const edgeLines = ctx.edges
     .filter(e => contextNodeIds.has(e.sourceId) || contextNodeIds.has(e.targetId))
     .map(e => {
-      const s = ctx.nodes.find(n => n.id === e.sourceId)?.name ?? e.sourceId;
-      const t = ctx.nodes.find(n => n.id === e.targetId)?.name ?? e.targetId;
-      return `- ${s} —${e.relationshipType}→ ${t}`;
+      const s = ctx.nodes.find(n => n.id === e.sourceId)?.label ?? e.sourceId;
+      const t = ctx.nodes.find(n => n.id === e.targetId)?.label ?? e.targetId;
+      return `- ${s} —${e.type}→ ${t}`;
     })
     .slice(0, 12)
     .join('\n');

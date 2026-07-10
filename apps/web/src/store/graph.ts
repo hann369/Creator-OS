@@ -1,4 +1,5 @@
-import type { ContentPipeline, WorldEdge, WorldNode } from '@pronoia/domain';
+import type { ContentPipeline, WorldEdge, WorldNode, Node, Edge } from '@pronoia/domain';
+import { worldNodeToNode, nodeToWorldNode, worldEdgeToEdge, edgeToWorldEdge } from '@pronoia/domain';
 import { getActiveWorkspaceId } from '../lib/workspace.js';
 import { createCollection } from './collection.js';
 
@@ -20,8 +21,8 @@ export interface ExtendedContentPipeline extends ContentPipeline {
 }
 
 // ─── Row ↔ model mappers ─────────────────────────────────────────────────────
-export function rowToNode(row: any): WorldNode {
-  return {
+export function rowToNode(row: any): Node {
+  const legacyNode: WorldNode = {
     id: row.id,
     workspaceId: row.workspace_id ?? getActiveWorkspaceId(),
     name: row.name,
@@ -36,24 +37,26 @@ export function rowToNode(row: any): WorldNode {
     createdAt: new Date(row.created_at ?? new Date()),
     updatedAt: new Date(row.updated_at ?? new Date())
   };
+  return worldNodeToNode(legacyNode);
 }
 
-export function nodeToRow(node: WorldNode) {
+export function nodeToRow(node: Node) {
+  const legacyNode = nodeToWorldNode(node);
   return {
-    id: node.id,
-    workspace_id: node.workspaceId,
-    name: node.name,
-    type: node.type,
-    description: node.description,
-    confidence: node.confidence,
-    lifecycle_state: node.lifecycleState,
-    source_count: node.sourceCount,
-    metadata: node.metadata ?? {}
+    id: legacyNode.id,
+    workspace_id: legacyNode.workspaceId,
+    name: legacyNode.name,
+    type: legacyNode.type,
+    description: legacyNode.description,
+    confidence: legacyNode.confidence,
+    lifecycle_state: legacyNode.lifecycleState,
+    source_count: legacyNode.sourceCount,
+    metadata: legacyNode.metadata ?? {}
   };
 }
 
-export function rowToEdge(row: any): WorldEdge {
-  return {
+export function rowToEdge(row: any): Edge {
+  const legacyEdge: WorldEdge = {
     id: row.id,
     workspaceId: row.workspace_id ?? getActiveWorkspaceId(),
     sourceId: row.source_id,
@@ -63,17 +66,19 @@ export function rowToEdge(row: any): WorldEdge {
     confidence: row.confidence,
     createdAt: new Date(row.created_at ?? new Date())
   };
+  return worldEdgeToEdge(legacyEdge);
 }
 
-export function edgeToRow(edge: WorldEdge) {
+export function edgeToRow(edge: Edge) {
+  const legacyEdge = edgeToWorldEdge(edge);
   return {
-    id: edge.id,
-    workspace_id: edge.workspaceId,
-    source_id: edge.sourceId,
-    target_id: edge.targetId,
-    weight: edge.weight,
-    relationship_type: edge.relationshipType,
-    confidence: edge.confidence
+    id: legacyEdge.id,
+    workspace_id: legacyEdge.workspaceId,
+    source_id: legacyEdge.sourceId,
+    target_id: legacyEdge.targetId,
+    weight: legacyEdge.weight,
+    relationship_type: legacyEdge.relationshipType,
+    confidence: legacyEdge.confidence
   };
 }
 
@@ -93,6 +98,8 @@ export function rowToCard(row: any): ExtendedContentPipeline {
     attachments: row.attachments ?? [],
     comments: row.comments ?? [],
     linkedNodeIds: [],
+    x: row.x != null ? parseFloat(row.x) : undefined,
+    y: row.y != null ? parseFloat(row.y) : undefined,
     createdAt: new Date(row.created_at ?? new Date()),
     updatedAt: new Date(row.updated_at ?? new Date())
   };
@@ -112,17 +119,19 @@ export function cardToRow(c: ExtendedContentPipeline) {
     markdown: c.markdown,
     checklists: c.checklists,
     attachments: c.attachments,
-    comments: c.comments
+    comments: c.comments,
+    x: c.x,
+    y: c.y
   };
 }
 
 // ─── Collections ─────────────────────────────────────────────────────────────
-export const nodes = createCollection<WorldNode>({
+export const nodes = createCollection<Node>({
   table: 'world_nodes', lsKey: 'pronoia_nodes', idOf: (n) => n.id,
   fromRow: rowToNode, toRow: nodeToRow, stampUpdatedAt: true, insertAt: 'end',
 });
 
-export const edges = createCollection<WorldEdge>({
+export const edges = createCollection<Edge>({
   table: 'world_edges', lsKey: 'pronoia_edges', idOf: (e) => e.id,
   fromRow: rowToEdge, toRow: edgeToRow, insertAt: 'end',
 });
@@ -133,6 +142,6 @@ export const cards = createCollection<ExtendedContentPipeline>({
 });
 
 /** Every edge touching a node — the cascade set when that node is deleted. */
-export function edgesTouching(nodeId: string): WorldEdge[] {
+export function edgesTouching(nodeId: string): Edge[] {
   return edges.getAll().filter((e) => e.sourceId === nodeId || e.targetId === nodeId);
 }

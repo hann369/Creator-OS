@@ -244,6 +244,8 @@ export interface ContentPipeline {
   thumbnailUrl?: string;
   scheduledAt?: Date;
   publishedAt?: Date;
+  x?: number;
+  y?: number;
   createdAt: Date;
   updatedAt: Date;
 }

@@ -99,6 +99,56 @@ export function createCollection<T>(cfg: CollectionConfig<T>): Collection<T> {
     try { storage.setItem(storageKey(), JSON.stringify(items.map(cfg.toRow))); } catch { /* ignore */ }
   };
 
+  interface PendingWrite {
+    id: string;
+    type: 'upsert' | 'delete';
+    row?: any;
+  }
+
+  const pendingKey = () => storageKey() + '_pending';
+
+  const getPending = (): PendingWrite[] => {
+    try {
+      const raw = storage.getItem(pendingKey());
+      if (raw) return JSON.parse(raw);
+    } catch { /* ignore */ }
+    return [];
+  };
+
+  const setPending = (pending: PendingWrite[]) => {
+    try {
+      if (pending.length === 0) {
+        storage.setItem(pendingKey(), '[]');
+      } else {
+        storage.setItem(pendingKey(), JSON.stringify(pending));
+      }
+    } catch { /* ignore */ }
+  };
+
+  let syncing = false;
+  async function syncPending() {
+    if (syncing) return;
+    syncing = true;
+    try {
+      const backend = repo();
+      const pending = getPending();
+      for (const pw of pending) {
+        try {
+          if (pw.type === 'delete') {
+            await backend.remove(cfg.table, pw.id);
+          } else if (pw.type === 'upsert') {
+            await backend.upsert(cfg.table, pw.row);
+          }
+          setPending(getPending().filter(p => p.id !== pw.id));
+        } catch (err) {
+          break; // Stop syncing on network error
+        }
+      }
+    } finally {
+      syncing = false;
+    }
+  }
+
   function ensureLoaded(): Promise<void> {
     if (inFlight) return inFlight;
     inFlight = (async () => {
@@ -121,9 +171,36 @@ export function createCollection<T>(cfg: CollectionConfig<T>): Collection<T> {
         }
 
         const mapped = rows.map(cfg.fromRow);
-        store.setState(mapped);
-        mirror(mapped);
-      } catch { /* offline → keep local */ }
+        
+        // Merge pending writes
+        const pending = getPending();
+        let merged = [...mapped];
+        for (const pw of pending) {
+          if (pw.type === 'delete') {
+            merged = merged.filter(item => cfg.idOf(item) !== pw.id);
+          } else if (pw.type === 'upsert') {
+            const item = cfg.fromRow(pw.row);
+            const index = merged.findIndex(i => cfg.idOf(i) === pw.id);
+            if (index !== -1) {
+              merged[index] = item;
+            } else {
+              if (insertAt === 'start') {
+                merged.unshift(item);
+              } else {
+                merged.push(item);
+              }
+            }
+          }
+        }
+
+        store.setState(merged);
+        mirror(merged);
+        
+        void syncPending();
+      } catch { 
+        /* offline → keep local */ 
+        void syncPending();
+      }
       finally { loaded.setState(true); }
     })();
     return inFlight;
@@ -154,10 +231,34 @@ export function createCollection<T>(cfg: CollectionConfig<T>): Collection<T> {
   function commit(next: T[], changed: T | undefined, isDelete = false, id?: string) {
     store.setState(next);
     mirror(next);
+
+    const itemId = id || (changed ? cfg.idOf(changed) : undefined);
+    if (itemId) {
+      const pending = getPending();
+      const filtered = pending.filter(p => p.id !== itemId);
+      if (isDelete) {
+        filtered.push({ id: itemId, type: 'delete' });
+      } else if (changed) {
+        filtered.push({ id: itemId, type: 'upsert', row: cfg.toRow(changed) });
+      }
+      setPending(filtered);
+    }
+
     if (isDelete && id) {
-      repo().remove(cfg.table, id).then(() => {}, () => {});
+      repo().remove(cfg.table, id).then(
+        () => {
+          setPending(getPending().filter(p => p.id !== id));
+        },
+        () => {}
+      );
     } else if (changed) {
-      repo().upsert(cfg.table, cfg.toRow(changed)).then(() => {}, () => {});
+      const itemId = cfg.idOf(changed);
+      repo().upsert(cfg.table, cfg.toRow(changed)).then(
+        () => {
+          setPending(getPending().filter(p => p.id !== itemId));
+        },
+        () => {}
+      );
     }
   }
 

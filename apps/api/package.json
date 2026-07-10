@@ -10,6 +10,7 @@
     "start": "node --env-file=.env dist/main.js"
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "@pronoia/ai": "*",
     "@pronoia/brain": "*",
     "@pronoia/cognition": "*",
@@ -19,7 +20,8 @@
     "@pronoia/shared": "*",
     "@supabase/supabase-js": "^2.110.0",
     "express": "^4.19.2",
-    "ws": "^8.17.0"
+    "ws": "^8.17.0",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@types/express": "^4.17.21",

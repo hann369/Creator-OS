@@ -66,3 +66,27 @@ export function getRepository(): Repository {
   }
   return current;
 }
+
+export function createHybridRepository(
+  apiTables: string[],
+  apiRepo: Repository,
+  fallbackRepo: Repository
+): Repository {
+  return {
+    list(table, wsId) {
+      return apiTables.includes(table)
+        ? apiRepo.list(table, wsId)
+        : fallbackRepo.list(table, wsId);
+    },
+    upsert(table, row) {
+      return apiTables.includes(table)
+        ? apiRepo.upsert(table, row)
+        : fallbackRepo.upsert(table, row);
+    },
+    remove(table, id) {
+      return apiTables.includes(table)
+        ? apiRepo.remove(table, id)
+        : fallbackRepo.remove(table, id);
+    },
+  };
+}

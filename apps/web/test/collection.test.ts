@@ -14,7 +14,6 @@ interface Item { id: string; title: string; workspaceId: string }
 const toRow = (i: Item): Row => ({ id: i.id, title: i.title, workspace_id: i.workspaceId });
 const fromRow = (r: any): Item => ({ id: r.id, title: r.title, workspaceId: r.workspace_id });
 
-/** Records every call, so a test can assert that nothing was written back. */
 function fakeRepo(seedRows: Row[] = []) {
   const rows = new Map<string, Row>(seedRows.map((r) => [r.id, r]));
   const calls: string[] = [];
@@ -25,8 +24,16 @@ function fakeRepo(seedRows: Row[] = []) {
       if (failList) throw new Error('offline');
       return [...rows.values()].filter((r) => !workspaceId || r.workspace_id === workspaceId);
     },
-    async upsert(table, row) { calls.push(`upsert:${table}:${row.id}`); rows.set(row.id, row); },
-    async remove(table, id) { calls.push(`remove:${table}:${id}`); rows.delete(id); },
+    async upsert(table, row) {
+      calls.push(`upsert:${table}:${row.id}`);
+      if (failList) throw new Error('offline');
+      rows.set(row.id, row);
+    },
+    async remove(table, id) {
+      calls.push(`remove:${table}:${id}`);
+      if (failList) throw new Error('offline');
+      rows.delete(id);
+    },
   };
   return { repo, rows, calls, goOffline: () => { failList = true; } };
 }
@@ -185,4 +192,41 @@ test('switching projects resets the collection and refetches', async () => {
   assert.deepEqual(items.getAll().map((i) => i.id), ['b'], "the previous project's rows are gone");
   assert.deepEqual(calls, ['list:items:main-space', 'list:items:proj-2']);
   setActiveWorkspaceId('main-space');
+});
+
+test('offline-created item survives a successful online load (empty remote) and is synced', async () => {
+  setActiveWorkspaceId('main-space');
+  const storage = createMemoryStorage();
+  const backend = fakeRepo();
+
+  // 1. Initial collection loads, we are online
+  const collection = createCollection<Item>({
+    table: 'items', lsKey: 'test_sync', idOf: (i) => i.id, fromRow, toRow,
+    repo: backend.repo, storage,
+  });
+  await collection.load();
+  assert.equal(collection.getAll().length, 0);
+
+  // 2. Go offline and add an item
+  backend.goOffline();
+  collection.add({ id: 'offline-item', title: 'Offline Item', workspaceId: 'main-space' });
+  assert.deepEqual(collection.getAll().map(i => i.id), ['offline-item']);
+
+  // 3. Re-load the collection (app restart), simulate being online again
+  // Backend database is still empty (since the offline write failed to sync)
+  const onlineBackend = fakeRepo(); // online and empty
+  const collection2 = createCollection<Item>({
+    table: 'items', lsKey: 'test_sync', idOf: (i) => i.id, fromRow, toRow,
+    repo: onlineBackend.repo, storage,
+  });
+  
+  // This online load returns 0 items from database, but should MERGE our offline item
+  await collection2.load();
+  assert.deepEqual(collection2.getAll().map(i => i.id), ['offline-item'], 'offline item survived empty remote load');
+
+  // Let the microtasks/promises resolve so the background sync executes
+  await new Promise(resolve => setTimeout(resolve, 50));
+
+  // 4. Verify that the offline item has been successfully synced to the backend
+  assert.equal(onlineBackend.rows.has('offline-item'), true, 'offline item was synced to backend');
 });

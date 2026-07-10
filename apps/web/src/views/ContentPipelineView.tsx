@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Play, TrendingUp, Plus, X, AlignLeft, Trash2, Youtube, Twitter, Instagram, CheckSquare, Paperclip, Copy, Target, Braces, Share2, Network, Palette, Download } from 'lucide-react';
+import { Play, TrendingUp, Plus, X, AlignLeft, Trash2, Youtube, Twitter, Instagram, CheckSquare, Paperclip, Copy, Target, Braces, Share2, Network, Palette, Download, Eye } from 'lucide-react';
 import { useWorkspace } from '../context/WorkspaceContext.js';
 import { useRelationships } from '../hooks/useRelationships.js';
 import { useMoodboards } from '../hooks/useMoodboards.js';
@@ -8,6 +8,7 @@ import { useIdentity } from '../hooks/useIdentity.js';
 import { useAuth } from '../context/AuthContext.js';
 import { displayName } from '../lib/user.js';
 import type { PipelineStatus, ContentMetrics } from '@pronoia/domain';
+import { selectNode } from '../store/selection.js';
 
 const STAGES: { status: PipelineStatus; label: string; color: string; bg: string }[] = [
   { status: 'idea',       label: 'Idee',        color: '#8b5cf6', bg: 'rgba(139,92,246,0.08)' },
@@ -571,9 +572,24 @@ export const ContentPipelineView: React.FC<ContentPipelineViewProps> = ({ onOpen
                       <div key={edge.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '11px', padding: '8px 12px', background: 'rgba(15,90,71,0.04)', borderRadius: '4px' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                           <Network size={11} color="var(--accent-color)" />
-                          <span style={{ color: 'var(--text-primary)', fontWeight: 500 }}>{node.name}</span>
+                          <span style={{ color: 'var(--text-primary)', fontWeight: 500 }}>{node.label}</span>
+                          <button
+                            title="Im Brain anzeigen"
+                            onClick={() => selectNode(node.id)}
+                            style={{
+                              background: 'transparent',
+                              border: 'none',
+                              color: 'var(--accent-color)',
+                              cursor: 'pointer',
+                              display: 'inline-flex',
+                              padding: '2px',
+                              marginLeft: '4px',
+                            }}
+                          >
+                            <Eye size={12} />
+                          </button>
                         </div>
-                        <span style={{ fontSize: '9px', color: 'var(--accent-color)', fontFamily: 'var(--font-mono)' }}>{edge.relationshipType}</span>
+                        <span style={{ fontSize: '9px', color: 'var(--accent-color)', fontFamily: 'var(--font-mono)' }}>{edge.type}</span>
                       </div>
                     )) : (
                       <div style={{ fontSize: '11px', color: 'var(--text-secondary)', textAlign: 'center', padding: '12px' }}>

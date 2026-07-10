@@ -53,13 +53,33 @@ coursesRouter.post('/:id/checkout', async (req: Request, res: Response) => {
     if (!course.price_cents || course.price_cents <= 0) return res.status(400).json({ error: 'course-is-free' });
 
     const returnUrl: string = req.body?.returnUrl || `${req.headers.origin || ''}/c/${course.slug}`;
-    const orderId = uid('ord');
+    let orderId: string;
+    const { data: existingOrder } = await supabaseAdmin
+      .from('orders')
+      .select('id')
+      .eq('course_id', course.id)
+      .eq('buyer_user_id', user.id)
+      .eq('status', 'pending')
+      .limit(1)
+      .maybeSingle();
 
-    // Record a pending order first, so the webhook can reconcile against it.
-    await supabaseAdmin.from('orders').insert({
-      id: orderId, course_id: course.id, buyer_user_id: user.id, buyer_email: user.email,
-      amount_cents: course.price_cents, currency: course.currency, status: 'pending',
-    });
+    if (existingOrder) {
+      orderId = existingOrder.id;
+      await supabaseAdmin
+        .from('orders')
+        .update({
+          amount_cents: course.price_cents,
+          currency: course.currency,
+          buyer_email: user.email || '',
+        })
+        .eq('id', orderId);
+    } else {
+      orderId = uid('ord');
+      await supabaseAdmin.from('orders').insert({
+        id: orderId, course_id: course.id, buyer_user_id: user.id, buyer_email: user.email,
+        amount_cents: course.price_cents, currency: course.currency, status: 'pending',
+      });
+    }
 
     const session = await stripe('checkout/sessions', {
       mode: 'payment',
