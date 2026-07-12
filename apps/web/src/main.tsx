@@ -9,7 +9,7 @@ import { useProjects, type ProjectItem } from './hooks/useProjects.ts'
 import { setActiveWorkspaceId } from './lib/workspace.ts'
 import { setRepository, createHybridRepository } from './store/repository.ts'
 import { supabaseRepository } from './store/supabaseRepository.ts'
-import { apiRepository } from './store/apiRepository.ts'
+import { apiRepository, API_ROUTED_TABLES } from './store/apiRepository.ts'
 import { CourseViewer } from './views/CourseViewer.tsx'
 import { LandingPage } from './views/LandingPage.tsx'
 import { OAuthConsent } from './views/OAuthConsent.tsx'
@@ -17,7 +17,7 @@ import { AuthScreen } from './components/AuthScreen.tsx'
 
 // Compose the data layer: the collections resolve this lazily, on their first
 // read or write, so registering it before render() is early enough.
-const hybridRepo = createHybridRepository(['goals'], apiRepository, supabaseRepository);
+const hybridRepo = createHybridRepository([...API_ROUTED_TABLES], apiRepository, supabaseRepository);
 setRepository(hybridRepo)
 
 // Gateway: show the projects screen first; entering a project mounts the
@@ -101,7 +101,12 @@ function render() {
   const hasAuthorizationId = searchParams.has('authorization_id');
   
   const consentMatch = path === '/oauth/consent' || hasAuthorizationId;
-  const root = createRoot(document.getElementById('root')!);
+  // Reuse a single root across HMR re-executions of this module — createRoot on a
+  // container that already has one warns and leaks. Cache it on window so a hot
+  // reload calls render() on the existing root instead of making a new one.
+  const container = document.getElementById('root')!;
+  const w = window as unknown as { __pronoiaRoot?: ReturnType<typeof createRoot> };
+  const root = (w.__pronoiaRoot ??= createRoot(container));
   
   if (match) {
     root.render(

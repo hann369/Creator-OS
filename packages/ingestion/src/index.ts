@@ -14,4 +14,6 @@ export * from './providers/supadata.js';
 export * from './providers/youtubeFetch.js';
 export * from './providers/youtubeProvider.js';
 export * from './providers/instagramProvider.js';
+export * from './providers/tiktokProvider.js';
+export * from './providers/twitterProvider.js';
 export * from './providers/fixtureProvider.js';

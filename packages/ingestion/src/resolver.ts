@@ -100,7 +100,88 @@ const instagramMatcher: SourceMatcher = {
   },
 };
 
-const MATCHERS: SourceMatcher[] = [youtubeMatcher, instagramMatcher];
+const tiktokMatcher: SourceMatcher = {
+  platform: 'tiktok',
+  match(u) {
+    const host = u.hostname.replace(/^www\./, '');
+    if (host !== 'tiktok.com' && !host.endsWith('.tiktok.com')) return null;
+
+    const parts = u.pathname.split('/').filter(Boolean);
+
+    // /@user/video/{id} and /@user/photo/{id} — the canonical desktop forms.
+    const kindIdx = parts.findIndex((p) => p === 'video' || p === 'photo');
+    if (kindIdx !== -1) {
+      const kind = parts[kindIdx];
+      const videoId = parts[kindIdx + 1] ?? null;
+      if (!videoId || !/^\d{6,25}$/.test(videoId)) return null;
+      const creator = parts[0]?.startsWith('@') ? stripAt(parts[0]) : null;
+      return {
+        creator,
+        creatorId: null,
+        canonicalUrl: creator
+          ? `https://www.tiktok.com/@${creator}/${kind}/${videoId}`
+          : `https://www.tiktok.com/${kind}/${videoId}`,
+        mediaType: kind === 'photo' ? 'image' : 'short',
+        videoId,
+      };
+    }
+
+    // /v/{id}.html — the legacy mobile share form.
+    if (parts[0] === 'v' && parts[1]) {
+      const videoId = parts[1].replace(/\.html$/, '');
+      if (/^\d{6,25}$/.test(videoId)) {
+        return {
+          creator: null, creatorId: null,
+          canonicalUrl: `https://www.tiktok.com/video/${videoId}`,
+          mediaType: 'short', videoId,
+        };
+      }
+    }
+
+    // Short links (vm./vt. hosts, or /t/{code}) — the real id only appears after
+    // following the redirect, so keep the normalized short URL and resolve the id
+    // later. A bare profile or the homepage is NOT a single content item → null.
+    const isShortHost = host === 'vm.tiktok.com' || host === 'vt.tiktok.com';
+    if (isShortHost || parts[0] === 't') {
+      return {
+        creator: null, creatorId: null,
+        canonicalUrl: `https://${host}${u.pathname}`.replace(/\/+$/, ''),
+        mediaType: 'short', videoId: null,
+      };
+    }
+
+    return null;
+  },
+};
+
+const twitterMatcher: SourceMatcher = {
+  platform: 'twitter',
+  match(u) {
+    const host = u.hostname.replace(/^www\./, '').replace(/^mobile\./, '');
+    if (host !== 'twitter.com' && host !== 'x.com') return null;
+
+    const parts = u.pathname.split('/').filter(Boolean);
+    const statusIdx = parts.findIndex((p) => p === 'status' || p === 'statuses');
+    if (statusIdx === -1) return null;
+
+    const tweetId = parts[statusIdx + 1] ?? null;
+    if (!tweetId || !/^\d{5,25}$/.test(tweetId)) return null;
+
+    // /{user}/status/{id} or the user-less /i/web/status/{id} form.
+    const userPart = parts[0];
+    const creator = userPart && userPart !== 'i' ? stripAt(userPart) : null;
+
+    return {
+      creator,
+      creatorId: null,
+      canonicalUrl: `https://x.com/${creator ?? 'i'}/status/${tweetId}`,
+      mediaType: 'thread',
+      videoId: tweetId,
+    };
+  },
+};
+
+const MATCHERS: SourceMatcher[] = [youtubeMatcher, instagramMatcher, tiktokMatcher, twitterMatcher];
 
 /** Register an additional platform matcher (Phase 14 extensibility hook). */
 export function registerMatcher(matcher: SourceMatcher): void {

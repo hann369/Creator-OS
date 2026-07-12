@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import {
   resolveSource,
   UnsupportedSourceError,
+  TikTokProvider,
+  TwitterProvider,
   classify,
   HOOK_PATTERNS,
   SEED_PATTERNS,
@@ -43,6 +45,83 @@ test('resolver handles Instagram reel and post forms', () => {
 
   const post = resolveSource('https://www.instagram.com/p/AbC987/');
   assert.equal(post.mediaType, 'image');
+});
+
+test('resolver handles TikTok URL forms', () => {
+  const video = resolveSource('https://www.tiktok.com/@creator/video/7212345678901234567');
+  assert.equal(video.platform, 'tiktok');
+  assert.equal(video.creator, 'creator');
+  assert.equal(video.videoId, '7212345678901234567');
+  assert.equal(video.mediaType, 'short');
+  assert.equal(video.canonicalUrl, 'https://www.tiktok.com/@creator/video/7212345678901234567');
+
+  const photo = resolveSource('https://www.tiktok.com/@creator/photo/7212345678901234567');
+  assert.equal(photo.mediaType, 'image');
+
+  // Short share link — id only appears after the redirect, so videoId stays null.
+  const short = resolveSource('https://vm.tiktok.com/ZMabc123/');
+  assert.equal(short.platform, 'tiktok');
+  assert.equal(short.videoId, null);
+  assert.equal(short.canonicalUrl, 'https://vm.tiktok.com/ZMabc123');
+
+  // A bare profile is not a single content item.
+  assert.throws(() => resolveSource('https://www.tiktok.com/@creator'), UnsupportedSourceError);
+});
+
+test('resolver handles X / Twitter status forms', () => {
+  const tw = resolveSource('https://twitter.com/handle/status/1580661436218830848');
+  assert.equal(tw.platform, 'twitter');
+  assert.equal(tw.creator, 'handle');
+  assert.equal(tw.videoId, '1580661436218830848');
+  assert.equal(tw.mediaType, 'thread');
+  // twitter.com and x.com normalize to the same canonical host.
+  assert.equal(tw.canonicalUrl, 'https://x.com/handle/status/1580661436218830848');
+  assert.equal(resolveSource('https://x.com/handle/status/1580661436218830848').canonicalUrl, tw.canonicalUrl);
+
+  // The user-less /i/web/status/ form resolves with a null creator.
+  assert.equal(resolveSource('https://twitter.com/i/web/status/1580661436218830848').creator, null);
+
+  // Scheme-less paste.
+  assert.equal(resolveSource('x.com/handle/status/1580661436218830848').platform, 'twitter');
+
+  // A profile without a status is not a single content item.
+  assert.throws(() => resolveSource('https://x.com/handle'), UnsupportedSourceError);
+});
+
+test('TikTokProvider maps the keyless oEmbed response into ProviderMetadata', async () => {
+  const orig = globalThis.fetch;
+  // The real endpoint omits author_unique_id and gives the @handle only via
+  // author_url — a short-link source (creator null) must still recover it.
+  globalThis.fetch = (async () => ({
+    ok: true,
+    json: async () => ({ title: 'a #vibe clip', author_name: 'Creator Name', author_url: 'https://www.tiktok.com/@realhandle', thumbnail_url: 'https://t/x.jpg' }),
+  })) as unknown as typeof fetch;
+  try {
+    const p = new TikTokProvider();
+    const src = resolveSource('https://vm.tiktok.com/ZMabc123/');
+    assert.equal(p.canHandle(src), true);
+    const meta = await p.fetchMetadata(src);
+    assert.equal(meta.creator, 'realhandle'); // from author_url, not the display name
+    assert.equal(meta.thumbnail, 'https://t/x.jpg');
+    assert.deepEqual(meta.metadata.hashtags, ['#vibe']);
+    // oEmbed carries no engagement → stats come back zeroed.
+    assert.deepEqual(await p.fetchStatistics(), { views: 0, likes: 0, comments: 0, shares: 0 });
+  } finally {
+    globalThis.fetch = orig;
+  }
+});
+
+test('TwitterProvider without a key fails with an actionable error', async () => {
+  const prev = process.env.X_TWITTER_SCRAPER_API_KEY;
+  delete process.env.X_TWITTER_SCRAPER_API_KEY;
+  try {
+    const p = new TwitterProvider();
+    const src = resolveSource('https://x.com/handle/status/1580661436218830848');
+    assert.equal(p.canHandle(src), true);
+    await assert.rejects(() => p.fetchMetadata(src), /X_TWITTER_SCRAPER_API_KEY/);
+  } finally {
+    if (prev) process.env.X_TWITTER_SCRAPER_API_KEY = prev;
+  }
 });
 
 test('resolver tolerates scheme-less pastes and extra hosts/paths', () => {

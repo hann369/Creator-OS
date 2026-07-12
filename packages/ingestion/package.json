@@ -14,6 +14,7 @@
     "@pronoia/domain": "*",
     "@pronoia/services": "*",
     "@pronoia/shared": "*",
+    "x-twitter-scraper": "^0.3.3",
     "youtube-transcript": "^1.3.1"
   },
   "devDependencies": {

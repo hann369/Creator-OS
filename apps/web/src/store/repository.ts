@@ -67,26 +67,32 @@ export function getRepository(): Repository {
   return current;
 }
 
+/**
+ * Splits persistence by operation (Roadmap Phase C):
+ *   • WRITES (upsert/remove) to a listed table go through `apiRepo` — the server
+ *     stamps owner_id with the service role, so persistence no longer trusts the
+ *     browser's RLS context. This is the actual goal of Phase C ("move writes
+ *     behind the API instead of the browser anon client").
+ *   • READS always go to `fallbackRepo` (the anon Supabase client): RLS already
+ *     scopes reads to the owner, and reading direct is faster and more reliable
+ *     than adding a serverless hop — it also keeps local dev working when the API
+ *     server isn't up. Writes to an unlisted table also fall back.
+ */
 export function createHybridRepository(
-  apiTables: string[],
+  writeApiTables: string[],
   apiRepo: Repository,
   fallbackRepo: Repository
 ): Repository {
+  const viaApi = (table: string) => writeApiTables.includes(table);
   return {
     list(table, wsId) {
-      return apiTables.includes(table)
-        ? apiRepo.list(table, wsId)
-        : fallbackRepo.list(table, wsId);
+      return fallbackRepo.list(table, wsId);
     },
     upsert(table, row) {
-      return apiTables.includes(table)
-        ? apiRepo.upsert(table, row)
-        : fallbackRepo.upsert(table, row);
+      return viaApi(table) ? apiRepo.upsert(table, row) : fallbackRepo.upsert(table, row);
     },
     remove(table, id) {
-      return apiTables.includes(table)
-        ? apiRepo.remove(table, id)
-        : fallbackRepo.remove(table, id);
+      return viaApi(table) ? apiRepo.remove(table, id) : fallbackRepo.remove(table, id);
     },
   };
 }

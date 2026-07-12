@@ -3,6 +3,8 @@ import {
   selectProvider,
   YoutubeProvider,
   InstagramProvider,
+  TikTokProvider,
+  TwitterProvider,
   resolveSource,
   plannedContentId,
   type ContentProvider,
@@ -33,7 +35,7 @@ const queue: Job[] = [];
 let running = false;
 
 function buildProviders(): ContentProvider[] {
-  return [new YoutubeProvider(), new InstagramProvider()];
+  return [new YoutubeProvider(), new InstagramProvider(), new TikTokProvider(), new TwitterProvider()];
 }
 
 export async function processJob(job: Job): Promise<void> {
