@@ -1,5 +1,6 @@
-import { Request, Response, Router } from 'express';
+import { Router, type Request, type Response } from 'express';
 import { supabaseAdmin } from '../supabase.js';
+import { repositoryTablePolicy } from './repositoryPolicy.js';
 
 export const repositoryRouter = Router();
 
@@ -13,10 +14,16 @@ async function getAuthUser(req: Request) {
 
 // GET /api/v1/repository/:table
 repositoryRouter.get('/:table', async (req: Request, res: Response) => {
+  const table = req.params.table;
+  // Allowlist first — cheap input validation, and the table is unreachable
+  // whether or not the caller is authenticated.
+  if (!repositoryTablePolicy(table)) {
+    return res.status(400).json({ error: `Table '${table}' is not exposed through the repository API` });
+  }
+
   const user = await getAuthUser(req);
   if (!user) return res.status(401).json({ error: 'Unauthorized' });
 
-  const table = req.params.table;
   const workspaceId = req.query.workspaceId ? String(req.query.workspaceId) : undefined;
 
   try {
@@ -34,18 +41,26 @@ repositoryRouter.get('/:table', async (req: Request, res: Response) => {
 
 // POST /api/v1/repository/:table
 repositoryRouter.post('/:table', async (req: Request, res: Response) => {
+  const table = req.params.table;
+  const policy = repositoryTablePolicy(table);
+  if (!policy) {
+    return res.status(400).json({ error: `Table '${table}' is not exposed through the repository API` });
+  }
+
   const user = await getAuthUser(req);
   if (!user) return res.status(401).json({ error: 'Unauthorized' });
 
-  const table = req.params.table;
   const row = req.body;
 
   try {
-    const rowWithOwner = {
+    const rowWithOwner: Record<string, unknown> = {
       ...row,
       owner_id: user.id,
-      updated_at: new Date().toISOString(),
     };
+    // Only stamp updated_at on tables that actually have the column.
+    if (policy.stampUpdatedAt) {
+      rowWithOwner.updated_at = new Date().toISOString();
+    }
     const { error } = await supabaseAdmin.from(table).upsert(rowWithOwner, { onConflict: 'id' });
     if (error) return res.status(500).json({ error: error.message });
     return res.json({ ok: true });
@@ -56,10 +71,13 @@ repositoryRouter.post('/:table', async (req: Request, res: Response) => {
 
 // DELETE /api/v1/repository/:table/:id
 repositoryRouter.delete('/:table/:id', async (req: Request, res: Response) => {
+  const { table, id } = req.params;
+  if (!repositoryTablePolicy(table)) {
+    return res.status(400).json({ error: `Table '${table}' is not exposed through the repository API` });
+  }
+
   const user = await getAuthUser(req);
   if (!user) return res.status(401).json({ error: 'Unauthorized' });
-
-  const { table, id } = req.params;
 
   try {
     const { error } = await supabaseAdmin.from(table).delete().eq('id', id).eq('owner_id', user.id);

@@ -12,6 +12,7 @@ import { coursesRouter, stripeWebhookHandler } from './controllers/courses.js';
 import { mcpRouter } from './controllers/mcp.js';
 import { ThinkingWebSocketController } from './controllers/thinking.js';
 import { repositoryRouter } from './controllers/repository.js';
+import { remixRouter } from './controllers/remix.js';
 
 const app = express();
 
@@ -31,6 +32,7 @@ app.use('/api/v1/telegram', telegramRouter);
 app.use('/api/v1/library', libraryRouter);
 app.use('/api/v1/courses', coursesRouter);
 app.use('/api/v1/repository', repositoryRouter);
+app.use('/api/v1/remix', remixRouter);
 
 // The Claude connector. Mounted at the root — its paths (/mcp and
 // /.well-known/oauth-protected-resource) are fixed by the MCP spec and RFC 9728,

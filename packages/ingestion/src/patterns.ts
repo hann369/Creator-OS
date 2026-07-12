@@ -18,7 +18,11 @@ export const HOOK_PATTERNS = [
   'Experimentation',
 ] as const;
 
-export const SEED_PATTERNS = [
+// The 20 short-form video FORMATS (12 educational + 8 storytelling) — the same
+// canonical list as the "Format" Lego Brick (apps/web/src/lib/legoBricks.ts).
+// Historically mislabelled "SEED_PATTERNS"; a video's *format* is distinct from
+// its *seed* (the one-line premise, captured separately as analysis.seed).
+export const FORMATS = [
   'Breakdown/Explainer',
   'Case Study',
   'Problem Solution',
@@ -40,6 +44,9 @@ export const SEED_PATTERNS = [
   'Episode Series/Social Show',
   'Challenge',
 ] as const;
+
+/** @deprecated Renamed to FORMATS — a video's format is not its seed. Kept for back-compat. */
+export const SEED_PATTERNS = FORMATS;
 
 export const MECHANISMS = [
   'Curiosity',
@@ -64,7 +71,9 @@ export const STORY_STRUCTURES = [
 ] as const;
 
 export type HookPattern = (typeof HOOK_PATTERNS)[number];
-export type SeedPattern = (typeof SEED_PATTERNS)[number];
+export type Format = (typeof FORMATS)[number];
+/** @deprecated Use Format. */
+export type SeedPattern = Format;
 export type Mechanism = (typeof MECHANISMS)[number];
 export type StoryStructure = (typeof STORY_STRUCTURES)[number];
 

@@ -257,7 +257,7 @@ export const App: React.FC<AppProps> = ({ project, onExitProject }) => {
         resource={resource}
         projectName={project.name}
         onExitProject={onExitProject}
-        onWorkspace={(t) => { setActiveTab(t); setResource(null); }}
+        onWorkspace={(t) => setActiveTab(t)}
         onResource={(r) => setResource(r)}
         isMobile={isMobile}
         open={sidebarOpen}
@@ -382,9 +382,9 @@ export const App: React.FC<AppProps> = ({ project, onExitProject }) => {
 
           {/* Bottom center Floating Navigation Dock */}
           <div className="floating-dock">
-            <button className={`floating-dock-btn ${!resource && activeTab === 'morning' ? 'active' : ''}`} onClick={() => { setActiveTab('morning'); setResource(null); }}>Today</button>
-            <button className={`floating-dock-btn ${!resource && activeTab === 'pipeline' ? 'active' : ''}`} onClick={() => { setActiveTab('pipeline'); setResource(null); }}>Pipeline</button>
-            <button className={`floating-dock-btn ${!resource && activeTab === 'brain' ? 'active' : ''}`} onClick={() => { setActiveTab('brain'); setResource(null); }}>Brain</button>
+            <button className={`floating-dock-btn ${!resource && activeTab === 'morning' ? 'active' : ''}`} onClick={() => setActiveTab('morning')}>Today</button>
+            <button className={`floating-dock-btn ${!resource && activeTab === 'pipeline' ? 'active' : ''}`} onClick={() => setActiveTab('pipeline')}>Pipeline</button>
+            <button className={`floating-dock-btn ${!resource && activeTab === 'brain' ? 'active' : ''}`} onClick={() => setActiveTab('brain')}>Brain</button>
           </div>
         </div>
       )}

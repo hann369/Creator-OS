@@ -117,18 +117,31 @@ test('findDuplicate catches canonical-url and video-id matches', () => {
     existing,
   );
   assert.equal(fresh.isDuplicate, false);
+
+  const self = findDuplicate(
+    { id: 'e1', platform: 'youtube', canonicalUrl: 'https://www.youtube.com/watch?v=AAA', videoId: 'AAA' },
+    existing,
+  );
+  assert.equal(self.isDuplicate, false);
 });
 
 // ─── Analysis validation + retry ───────────────────────────────────────────────
 test('parseAnalysis fills missing fields and snaps patterns', () => {
   const a = parseAnalysis(
-    JSON.stringify({ topic: 'AI Agents', hookPattern: 'secret reveal', seedPattern: 'case study', confidence: 0.8 }),
+    JSON.stringify({ topic: 'AI Agents', hookPattern: 'secret reveal', format: 'case study', confidence: 0.8 }),
   );
   assert.equal(a.topic, 'AI Agents');
   assert.equal(a.hookPattern, 'Secret Reveal');
-  assert.equal(a.seedPattern, 'Case Study');
+  assert.equal(a.format, 'Case Study');
+  assert.equal(a.seedPattern, 'Case Study'); // deprecated mirror stays in sync
   assert.deepEqual(a.subTopics, []); // missing array → []
   assert.equal(a.audience, ''); // missing string → ''
+});
+
+test('parseAnalysis accepts the legacy seedPattern field as format', () => {
+  const a = parseAnalysis(JSON.stringify({ topic: 'X', seedPattern: 'listicle', confidence: 0.5 }));
+  assert.equal(a.format, 'Listicle');
+  assert.equal(a.seedPattern, 'Listicle');
 });
 
 test('parseAnalysis rejects non-JSON', () => {

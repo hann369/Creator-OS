@@ -1,6 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { Cpu, Server, Key, Brain, Shield, Send } from 'lucide-react';
+import { Cpu, Server, Key, Brain, Shield, Send, Recycle } from 'lucide-react';
+// Deep import: the @pronoia/ai barrel pulls Node-only modules (events) that
+// break the browser build — remixDefaults is dependency-free.
+import { DEFAULT_CONTENT_FILTER } from '@pronoia/ai/dist/remixDefaults.js';
 import { useTelegramLink } from '../hooks/useTelegramLink.js';
+import { useRemixSettings } from '../hooks/useRemixOutput.js';
 
 type SettingsTab = 'models' | 'providers' | 'memory' | 'mcp' | 'privacy' | 'connections';
 
@@ -193,6 +197,9 @@ export const SettingsView: React.FC = () => {
               })}
             </div>
 
+            {/* Weekly Remix (Sonntags-Cron) */}
+            <WeeklyRemixPanel />
+
             {/* Chat Sandbox */}
             <div style={{ marginTop: '32px', borderTop: '1px solid var(--border-color)', paddingTop: '24px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
@@ -363,6 +370,103 @@ export const SettingsView: React.FC = () => {
   );
 };
 
+// ─── Weekly Remix settings ────────────────────────────────────────────────────
+//
+// Which AI answers the Sunday-morning remix cron (Gemini with a per-user key,
+// Mistral server key as fallback) and the content filter every remixed idea
+// must pass. Stored server-side in remix_settings — the cron runs without the
+// browser, so localStorage keys don't reach it.
+
+const WeeklyRemixPanel: React.FC = () => {
+  const { settings, loading, save } = useRemixSettings();
+  const [provider, setProvider] = useState<'gemini' | 'mistral'>('gemini');
+  const [geminiKey, setGeminiKey] = useState('');
+  const [filter, setFilter] = useState('');
+  const [minScore, setMinScore] = useState(6);
+  const [saving, setSaving] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (settings) {
+      setProvider(settings.provider);
+      setGeminiKey(settings.geminiApiKey);
+      setFilter(settings.contentFilter || DEFAULT_CONTENT_FILTER);
+      setMinScore(settings.minFilterScore);
+    } else if (!loading) {
+      setFilter(DEFAULT_CONTENT_FILTER);
+    }
+  }, [settings, loading]);
+
+  const handleSave = async () => {
+    setSaving(true); setMsg(null);
+    const r = await save({ provider, geminiApiKey: geminiKey.trim(), contentFilter: filter, minFilterScore: minScore });
+    setMsg(r.ok ? '✓ Gespeichert — der Sonntags-Remix nutzt ab jetzt diese Einstellungen.' : `Fehler: ${r.error}`);
+    setSaving(false);
+  };
+
+  return (
+    <div style={{ marginTop: '32px', borderTop: '1px solid var(--border-color)', paddingTop: '24px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
+        <Recycle size={16} color="var(--accent-color)" />
+        <h3 style={{ fontSize: '16px', fontWeight: 700, margin: 0 }}>Weekly Remix (Sonntag, 7 Uhr)</h3>
+      </div>
+      <p style={{ color: 'var(--text-secondary)', fontSize: '13px', marginBottom: '16px', lineHeight: 1.6 }}>
+        Die KI, die deine Library remixt (7 Shorts + 1 Long mit der höchsten Konnektivität), und der Content-Filter,
+        den jede Idee bestehen muss. Der Schlüssel wird <strong>server-seitig</strong> gespeichert, damit der Cron ihn nutzen
+        kann — Mistral (Server-Key) springt automatisch als Fallback ein.
+      </p>
+
+      {loading ? (
+        <span style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>Lädt…</span>
+      ) : (
+        <div style={{ border: '1px solid var(--border-color)', borderRadius: 'var(--radius-md)', padding: '16px', background: '#FCFCFD', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+            <span style={{ fontSize: '13px', fontWeight: 600 }}>Remix-KI:</span>
+            <select value={provider} onChange={(e) => setProvider(e.target.value as 'gemini' | 'mistral')}
+              style={{ border: '1px solid var(--border-color)', borderRadius: '8px', padding: '6px 12px', fontSize: '13px', outline: 'none', background: 'white' }}>
+              <option value="gemini">Google Gemini (eigener Key, Mistral als Fallback)</option>
+              <option value="mistral">Mistral (Server-Key)</option>
+            </select>
+          </div>
+
+          {provider === 'gemini' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+              <label style={{ fontSize: '13px', fontWeight: 600 }}>Gemini API-Key (für den Cron)</label>
+              <input type="password" placeholder="Gemini API-Key eintragen" value={geminiKey} onChange={(e) => setGeminiKey(e.target.value)}
+                style={{ border: '1px solid var(--border-color)', borderRadius: '8px', padding: '10px 14px', fontSize: '14px', outline: 'none' }} />
+            </div>
+          )}
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <label style={{ fontSize: '13px', fontWeight: 600 }}>Content-Filter (nummerierte Fragen)</label>
+              <button type="button" onClick={() => setFilter(DEFAULT_CONTENT_FILTER)}
+                style={{ border: 'none', background: 'none', color: 'var(--accent-color)', fontSize: '11px', cursor: 'pointer', fontWeight: 600 }}>
+                Auf „Die 7 Fragen" zurücksetzen
+              </button>
+            </div>
+            <textarea value={filter} onChange={(e) => setFilter(e.target.value)} rows={10}
+              style={{ border: '1px solid var(--border-color)', borderRadius: '8px', padding: '10px 14px', fontSize: '12.5px', outline: 'none', fontFamily: 'var(--font-sans)', lineHeight: 1.55, resize: 'vertical' }} />
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <label style={{ fontSize: '13px', fontWeight: 600 }}>Mindestens bestandene Fragen:</label>
+            <input type="number" min={1} max={20} value={minScore} onChange={(e) => setMinScore(Math.max(1, Number(e.target.value) || 6))}
+              style={{ width: '64px', border: '1px solid var(--border-color)', borderRadius: '8px', padding: '6px 10px', fontSize: '13px', outline: 'none' }} />
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <button className="btn-sage-primary" onClick={handleSave} disabled={saving} style={{ opacity: saving ? 0.6 : 1 }}>
+              {saving ? 'Speichert…' : 'Remix-Einstellungen speichern'}
+            </button>
+            {msg && <span style={{ fontSize: '12px', color: msg.startsWith('✓') ? 'var(--accent-color)' : '#c0392b' }}>{msg}</span>}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
 // ─── Connections: Telegram bot linking ───────────────────────────────────────
 const ConnectionsPanel: React.FC = () => {
   const { linked, username, code, botUsername, loading, error, connect, disconnect } = useTelegramLink();
@@ -418,6 +522,58 @@ const ConnectionsPanel: React.FC = () => {
         )}
 
         {error && <p style={{ fontSize: '12px', color: '#c0392b', marginTop: '12px' }}>{error}</p>}
+      </div>
+
+      {/* Claude.ai MCP Connector */}
+      <div style={{ border: '1px solid var(--border-color)', borderRadius: 'var(--radius-md)', padding: '20px', background: '#FCFCFD', marginTop: '20px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <Cpu size={16} color="var(--accent-color)" />
+            <h4 style={{ fontSize: '15px', fontWeight: 600, color: 'var(--text-primary)', margin: 0 }}>Claude.ai (MCP Connector)</h4>
+          </div>
+          <button 
+            className="btn-sage-primary" 
+            style={{ padding: '6px 12px', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '6px' }}
+            onClick={() => {
+              navigator.clipboard.writeText(`${window.location.origin}/mcp`);
+              alert('Connector URL in die Zwischenablage kopiert! Du wirst nun zu den Claude-Einstellungen weitergeleitet.');
+              window.open('https://claude.ai/settings/connectors', '_blank');
+            }}
+          >
+            Connect to Claude.ai
+          </button>
+        </div>
+        <p style={{ fontSize: '13px', color: 'var(--text-secondary)', margin: '0 0 16px', lineHeight: 1.6 }}>
+          Verbinde Claude.ai direkt mit deinem Creator OS. Claude kann dann deine Ideen, deine Pipeline und deine Ziele lesen.
+        </p>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', background: '#FFFFFF', border: '1px solid var(--border-color)', borderRadius: '8px', padding: '16px', fontSize: '13px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: '4px' }}>
+            <span style={{ color: 'var(--text-secondary)', fontWeight: 500 }}>Connector URL:</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <code style={{ fontFamily: 'var(--font-mono)', fontWeight: 600, color: 'var(--accent-color)' }}>{window.location.origin}/mcp</code>
+              <button
+                onClick={() => {
+                  navigator.clipboard.writeText(`${window.location.origin}/mcp`);
+                  alert('Connector URL kopiert!');
+                }}
+                style={{ border: 'none', background: 'none', color: 'var(--text-secondary)', cursor: 'pointer', padding: '2px', fontSize: '11px', fontWeight: 600 }}
+              >
+                Kopieren
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div style={{ marginTop: '16px', fontSize: '12px', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+          <strong style={{ color: 'var(--text-primary)', display: 'block', marginBottom: '4px' }}>Anleitung:</strong>
+          <ol style={{ margin: 0, paddingLeft: '16px' }}>
+            <li>Klicke oben auf <strong>Connect to Claude.ai</strong> (die Connector-URL wird automatisch kopiert).</li>
+            <li>Wähle in den Claude-Einstellungen <strong>Add custom connector</strong> und füge die <em>Connector URL</em> ein.</li>
+            <li>Klicke auf <strong>Add</strong> und melde dich im sich öffnenden Fenster mit deinem Creator-OS-Konto an.</li>
+          </ol>
+          <p style={{ margin: '8px 0 0' }}>Eine separate Client-ID brauchst du nicht — Claude registriert sich automatisch.</p>
+        </div>
       </div>
     </div>
   );

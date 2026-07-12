@@ -1,4 +1,5 @@
 import type { ContentPipeline, WorldEdge, WorldNode, Node, Edge } from '@pronoia/domain';
+import type { CardBricks } from '../lib/legoBricks.js';
 import { worldNodeToNode, nodeToWorldNode, worldEdgeToEdge, edgeToWorldEdge } from '@pronoia/domain';
 import { getActiveWorkspaceId } from '../lib/workspace.js';
 import { createCollection } from './collection.js';
@@ -18,6 +19,8 @@ export interface ExtendedContentPipeline extends ContentPipeline {
   checklists?: { id: string; text: string; done: boolean }[];
   attachments?: { id: string; name: string; type: string; url?: string }[];
   comments?: { id: string; author: string; text: string; createdAt: string }[];
+  /** The Lego Brick composition of this card (Phase 3). */
+  bricks?: CardBricks;
 }
 
 // ─── Row ↔ model mappers ─────────────────────────────────────────────────────
@@ -97,6 +100,7 @@ export function rowToCard(row: any): ExtendedContentPipeline {
     checklists: row.checklists ?? [],
     attachments: row.attachments ?? [],
     comments: row.comments ?? [],
+    bricks: row.bricks ?? {},
     linkedNodeIds: [],
     x: row.x != null ? parseFloat(row.x) : undefined,
     y: row.y != null ? parseFloat(row.y) : undefined,
@@ -120,6 +124,7 @@ export function cardToRow(c: ExtendedContentPipeline) {
     checklists: c.checklists,
     attachments: c.attachments,
     comments: c.comments,
+    bricks: c.bricks ?? {},
     x: c.x,
     y: c.y
   };

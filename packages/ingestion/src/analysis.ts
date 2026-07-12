@@ -2,7 +2,7 @@ import type { ChatProvider, ChatMessage } from '@pronoia/ai';
 import type { ContentEntry, VideoAnalysis } from './content-model.js';
 import {
   HOOK_PATTERNS,
-  SEED_PATTERNS,
+  FORMATS,
   MECHANISMS,
   STORY_STRUCTURES,
   classify,
@@ -22,8 +22,8 @@ metadata, transcript and top comments, extract structured knowledge.
 
 Here are the definitions of the key concepts you must extract:
 - Topic: The interest topic or subject focus of the video. This is the subcategory of a niche (e.g., "muscle building" or "STR tax loophole", not just "fitness" or "finance").
-- Seed: The actual core idea, premise, or one-line headline of the video (e.g. "Steal this $30M content strategy called T.D.S."). It should be highly relevant, valuable, unique, and shocking/interesting.
-- seedPattern (Format): The high-level sequencing or structure for how the video is communicated. Choose the closest one from: ${JSON.stringify(SEED_PATTERNS)}.
+- Seed: The actual core idea, premise, or one-line headline of the video (e.g. "Steal this $30M content strategy called T.D.S."). It should be highly relevant, valuable, unique, and shocking/interesting. This is DISTINCT from the format.
+- format: The high-level structure/canvas of the video (how it is communicated, e.g. how-to, listicle, case study, ranking, hero's journey). Choose the closest one from: ${JSON.stringify(FORMATS)}.
 - Substance: The context, facts, angles, takes, or examples shared in the video that are framed in a shocking, non-obvious, or interesting way. Summarize this briefly (e.g. "1. Facts about hot sauce sales; 2. Contrarian angle that hot sauce is just a content marketing stunt").
 
 Return ONLY a JSON object with EXACTLY these fields (no prose, no markdown):
@@ -31,7 +31,7 @@ Return ONLY a JSON object with EXACTLY these fields (no prose, no markdown):
   "topic": string,
   "subTopics": string[],
   "seed": string,
-  "seedPattern": one of ${JSON.stringify(SEED_PATTERNS)},
+  "format": one of ${JSON.stringify(FORMATS)},
   "substance": string,
   "hook": string,
   "hookPattern": one of ${JSON.stringify(HOOK_PATTERNS)},
@@ -55,7 +55,7 @@ Return ONLY a JSON object with EXACTLY these fields (no prose, no markdown):
 Use "" or [] when unknown — never omit a field.`;
 
 const REQUIRED_STRING_FIELDS: (keyof VideoAnalysis)[] = [
-  'topic', 'seed', 'seedPattern', 'substance', 'hook', 'hookPattern', 'mechanism', 'audience',
+  'topic', 'seed', 'format', 'substance', 'hook', 'hookPattern', 'mechanism', 'audience',
   'problem', 'promise', 'cta', 'storyStructure', 'editingStyle', 'visualStyle',
   'emotion', 'novelty',
 ];
@@ -110,8 +110,12 @@ export function parseAnalysis(raw: string): VideoAnalysis {
   }
   obj.confidence = typeof obj.confidence === 'number' ? Math.max(0, Math.min(1, obj.confidence)) : 0.5;
 
-  // Snap pattern fields onto the closed library.
-  obj.seedPattern = classify(obj.seedPattern, SEED_PATTERNS);
+  // Snap pattern fields onto the closed library. `format` supersedes the legacy
+  // `seedPattern` field; accept either from the model and mirror them so old
+  // consumers (and old rows) keep working.
+  const formatSource = obj.format || obj.seedPattern || '';
+  obj.format = classify(formatSource, FORMATS);
+  obj.seedPattern = obj.format;
   obj.hookPattern = classify(obj.hookPattern, HOOK_PATTERNS);
   obj.mechanism = classify(obj.mechanism, MECHANISMS);
   obj.storyStructure = classify(obj.storyStructure, STORY_STRUCTURES);

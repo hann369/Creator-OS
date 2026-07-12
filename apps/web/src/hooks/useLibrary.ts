@@ -11,7 +11,7 @@ import { fetchTranscriptFromBrowser } from '../lib/transcriptFetch.js';
 // server-only columns (comments/metadata/embedding) that the UI never sends.
 
 export interface LibVideoAnalysis {
-  topic: string; subTopics: string[]; seed: string; seedPattern: string; substance?: string; hook: string; hookPattern: string;
+  topic: string; subTopics: string[]; seed: string; format?: string; seedPattern: string; substance?: string; hook: string; hookPattern: string;
   mechanism: string; audience: string; problem: string; promise: string; cta: string;
   storyStructure: string; editingStyle: string; visualStyle: string; emotion: string; novelty: string;
   retentionTechniques: string[]; actionableTakeaways: string[]; claims: string[];
@@ -25,6 +25,8 @@ export interface LibEntry {
   creator: string;
   url: string;
   canonicalUrl: string;
+  /** Import-Tagging: 'short' (YouTube Shorts, Instagram Reels) | 'longform' (normale YouTube-Videos) | … */
+  mediaType: string;
   title: string;
   thumbnail?: string;
   transcript: string;
@@ -45,6 +47,7 @@ function rowToEntry(r: any): LibEntry {
     creator: r.creator ?? '',
     url: r.url ?? '',
     canonicalUrl: r.canonical_url ?? '',
+    mediaType: r.media_type ?? 'short',
     title: r.title ?? '',
     thumbnail: r.thumbnail ?? undefined,
     transcript: r.transcript ?? '',

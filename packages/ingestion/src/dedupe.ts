@@ -34,6 +34,7 @@ export function findDuplicate(
   const threshold = opts.embeddingThreshold ?? 0.95;
 
   for (const e of existing) {
+    if (e.id === incoming.id) continue;
     if (e.canonicalUrl && e.canonicalUrl === incoming.canonicalUrl) {
       return { isDuplicate: true, matchId: e.id, reason: 'canonical-url' };
     }

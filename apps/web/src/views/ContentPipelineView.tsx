@@ -9,6 +9,7 @@ import { useAuth } from '../context/AuthContext.js';
 import { displayName } from '../lib/user.js';
 import type { PipelineStatus, ContentMetrics } from '@pronoia/domain';
 import { selectNode } from '../store/selection.js';
+import { COMPOSER_BRICKS, composerOptions, masterChecklistItems, type CardBricks } from '../lib/legoBricks.js';
 
 const STAGES: { status: PipelineStatus; label: string; color: string; bg: string }[] = [
   { status: 'idea',       label: 'Idee',        color: '#8b5cf6', bg: 'rgba(139,92,246,0.08)' },
@@ -58,7 +59,7 @@ export const ContentPipelineView: React.FC<ContentPipelineViewProps> = ({ onOpen
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; cardId: string } | null>(null);
 
   // Sub-section tabs inside the workspace panel
-  const [activeSideTab, setActiveSideTab] = useState<'content' | 'checklists' | 'sources' | 'graph' | 'comments' | 'metrics'>('content');
+  const [activeSideTab, setActiveSideTab] = useState<'content' | 'bricks' | 'checklists' | 'sources' | 'graph' | 'comments' | 'metrics'>('content');
 
   const EMPTY_METRICS = { views: 0, watchTimeMinutes: 0, avgViewDurationSeconds: 0, clickThroughRate: 0, likes: 0, comments: 0, shares: 0, subscriberGain: 0, viralScore: 0 };
   const updateMetric = (cardId: string, field: 'views' | 'viralScore' | 'clickThroughRate' | 'subscriberGain', value: number) => {
@@ -419,6 +420,7 @@ export const ContentPipelineView: React.FC<ContentPipelineViewProps> = ({ onOpen
               {/* Sub Tabs Navigation */}
               <div style={{ display: 'flex', gap: '12px', borderBottom: '1px solid var(--border-color)', paddingBottom: '8px', fontSize: '11px', fontWeight: 600, flexWrap: 'wrap' }}>
                 <span onClick={() => setActiveSideTab('content')} style={{ cursor: 'pointer', color: activeSideTab === 'content' ? 'var(--accent-color)' : 'var(--text-secondary)' }}>Document</span>
+                <span onClick={() => setActiveSideTab('bricks')} style={{ cursor: 'pointer', color: activeSideTab === 'bricks' ? 'var(--accent-color)' : 'var(--text-secondary)' }}>Bricks ({Object.values(selectedItem.bricks ?? {}).filter(Boolean).length})</span>
                 <span onClick={() => setActiveSideTab('checklists')} style={{ cursor: 'pointer', color: activeSideTab === 'checklists' ? 'var(--accent-color)' : 'var(--text-secondary)' }}>Checklist ({selectedItem.checklists?.length || 0})</span>
                 <span onClick={() => setActiveSideTab('sources')} style={{ cursor: 'pointer', color: activeSideTab === 'sources' ? 'var(--accent-color)' : 'var(--text-secondary)' }}>Research ({selectedItem.attachments?.length || 0})</span>
                 <span onClick={() => setActiveSideTab('graph')} style={{ cursor: 'pointer', color: activeSideTab === 'graph' ? 'var(--accent-color)' : 'var(--text-secondary)' }}>Graph ({linkedNodes.length})</span>
@@ -535,6 +537,51 @@ export const ContentPipelineView: React.FC<ContentPipelineViewProps> = ({ onOpen
                       </label>
                     )) || <div style={{ fontSize: '11px', color: 'var(--text-secondary)', textAlign: 'center', padding: '12px' }}>Keine Tasks vorhanden.</div>}
                   </div>
+                </div>
+              )}
+
+              {/* Bricks — compose the video from the Lego Bricks */}
+              {activeSideTab === 'bricks' && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', flexGrow: 1, overflowY: 'auto' }}>
+                  <div style={{ fontSize: '11px', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+                    Stelle das Video aus den Bausteinen zusammen. Format setzt auch das <code>format</code>-Feld der Karte.
+                  </div>
+                  {COMPOSER_BRICKS.map((cb) => {
+                    const value = (selectedItem.bricks ?? {})[cb.key] ?? '';
+                    return (
+                      <div key={cb.key}>
+                        <div className="label-mono" style={{ fontSize: '9px', color: 'var(--text-secondary)', letterSpacing: '0.06em', marginBottom: '4px' }}>{cb.label}</div>
+                        <select
+                          value={value}
+                          onChange={(e) => {
+                            const next: CardBricks = { ...(selectedItem.bricks ?? {}), [cb.key]: e.target.value || undefined };
+                            const patch: Record<string, unknown> = { bricks: next };
+                            // Format is a first-class card field too — keep them in sync.
+                            if (cb.key === 'format' && e.target.value) patch.format = e.target.value;
+                            updateCard(selectedItem.id, patch);
+                          }}
+                          style={{ width: '100%', fontSize: '12px', border: '1px solid var(--border-color)', padding: '7px 10px', borderRadius: '6px', outline: 'none', background: 'transparent' }}
+                        >
+                          <option value="">— wählen —</option>
+                          {composerOptions(cb).map((o) => <option key={o} value={o}>{o}</option>)}
+                        </select>
+                      </div>
+                    );
+                  })}
+                  <button
+                    className="btn-sage-secondary"
+                    style={{ padding: '8px 12px', fontSize: '11px', marginTop: '4px' }}
+                    onClick={() => {
+                      const existing = selectedItem.checklists ?? [];
+                      const items = masterChecklistItems().filter((m) => !existing.some((e) => e.id === m.id));
+                      if (items.length === 0) { setActiveSideTab('checklists'); return; }
+                      updateCard(selectedItem.id, { checklists: [...existing, ...items] });
+                      setActiveSideTab('checklists');
+                    }}
+                    title="Die 6-Stufen Master-Checklist als Tasks anhängen"
+                  >
+                    + Master-Checklist laden
+                  </button>
                 </div>
               )}
 

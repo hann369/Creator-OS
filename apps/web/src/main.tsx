@@ -12,6 +12,8 @@ import { supabaseRepository } from './store/supabaseRepository.ts'
 import { apiRepository } from './store/apiRepository.ts'
 import { CourseViewer } from './views/CourseViewer.tsx'
 import { LandingPage } from './views/LandingPage.tsx'
+import { OAuthConsent } from './views/OAuthConsent.tsx'
+import { AuthScreen } from './components/AuthScreen.tsx'
 
 // Compose the data layer: the collections resolve this lazily, on their first
 // read or write, so registering it before render() is early enough.
@@ -59,14 +61,48 @@ function Root() {
   return <Workspace />
 }
 
+// OAuth consent gate: if not logged in, show a clean, centered login box directly. Once logged in, show consent screen.
+function OAuthConsentGate() {
+  const { session, loading } = useAuth()
+  if (loading) return null
+  if (!session) {
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', background: 'radial-gradient(circle at top left, #f8f9fa, #e9ecef)', padding: '20px' }}>
+        <div style={{ background: '#FFFFFF', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-lg)', padding: '32px', maxWidth: '400px', width: '100%', boxShadow: '0 10px 30px rgba(0,0,0,0.05)' }}>
+          <AuthScreen />
+        </div>
+      </div>
+    )
+  }
+  return <OAuthConsent />
+}
+
 // Minimal, dependency-free routing split (matches the codebase's build-our-own
 // ethos — own store, own test harness, no router lib). Two surfaces:
 //   • /c/:slug          → PUBLIC course viewer, OUTSIDE the auth gate
+//   • /oauth/consent    → The custom OAuth consent authorization UI
 //   • everything else    → the auth-gated studio
-// Vercel already rewrites deep links to index.html, so /c/:slug resolves here.
+// Vercel already rewrites deep links to index.html, so these paths resolve here.
 function render() {
+  const path = window.location.pathname.toLowerCase().replace(/\/$/, '');
+  
+  // Intercept /authorize requests and redirect to Supabase Auth
+  if (path === '/authorize') {
+    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+    if (supabaseUrl) {
+      const cleanUrl = supabaseUrl.replace(/\/$/, '');
+      window.location.href = `${cleanUrl}/auth/v1/oauth/authorize${window.location.search}`;
+      return;
+    }
+  }
+
   const match = window.location.pathname.match(/^\/c\/([^/]+)\/?$/);
+  const searchParams = new URLSearchParams(window.location.search);
+  const hasAuthorizationId = searchParams.has('authorization_id');
+  
+  const consentMatch = path === '/oauth/consent' || hasAuthorizationId;
   const root = createRoot(document.getElementById('root')!);
+  
   if (match) {
     root.render(
       <StrictMode>
@@ -75,6 +111,18 @@ function render() {
     );
     return;
   }
+  
+  if (consentMatch) {
+    root.render(
+      <StrictMode>
+        <AuthProvider>
+          <OAuthConsentGate />
+        </AuthProvider>
+      </StrictMode>,
+    );
+    return;
+  }
+  
   root.render(
     <StrictMode>
       <AuthProvider>

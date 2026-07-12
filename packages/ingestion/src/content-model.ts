@@ -73,8 +73,9 @@ export interface ContentComment {
 export interface VideoAnalysis {
   topic: string;
   subTopics: string[];
-  seed: string;
-  seedPattern: string;      // classified into SEED_PATTERNS
+  seed: string;             // the one-line premise/headline of the video
+  format: string;           // classified into FORMATS (the Format Lego Brick)
+  seedPattern: string;      // @deprecated mirror of `format`, kept for back-compat
   substance?: string;       // extracted substance of the video
   hook: string;
   hookPattern: string;      // classified into HOOK_PATTERNS

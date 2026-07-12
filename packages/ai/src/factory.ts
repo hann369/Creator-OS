@@ -1,25 +1,29 @@
 import type { AIProvider } from './types.js';
 import { MistralLiveProvider } from './providers/mistralLiveProvider.js';
+import { GeminiLiveProvider } from './providers/geminiLiveProvider.js';
 import { PomelliProvider, MistralProvider } from './providers/mockProviders.js';
 
 export interface ProviderConfig {
   /** Server-side Mistral API key. When present, the live Mistral/Pixtral provider
    *  is used for chat, reasoning AND vision (one key covers all three). */
   mistralKey?: string;
+  /** Gemini API key (chat only). Used when providerId is 'gemini'. */
+  geminiKey?: string;
 }
 
 /**
  * Resolve a concrete provider instance for a routed provider id.
  *
- * Strategy: we currently hold exactly one real key (Mistral). Pixtral gives it
- * vision, so a single MistralLiveProvider satisfies every capability the app
- * routes for today. If no key is configured we fall back to the deterministic
- * mock providers so the app never breaks in dev/offline (strangler-fig rule).
- *
- * When a second real provider is added (e.g. a dedicated vision model), branch
- * on `providerId` here — the call sites do not change.
+ * Two real providers exist: Mistral (chat/reasoning/vision/embeddings — the
+ * default and fallback) and Gemini (chat, per-user key from remix_settings).
+ * 'gemini' falls back to Mistral when no Gemini key is present, and everything
+ * falls back to the deterministic mocks when no key is configured at all, so
+ * the app never breaks in dev/offline (strangler-fig rule).
  */
 export function resolveProvider(providerId: string, cfg: ProviderConfig): AIProvider {
+  if (providerId === 'gemini' && cfg.geminiKey) {
+    return new GeminiLiveProvider(cfg.geminiKey);
+  }
   if (cfg.mistralKey) {
     return new MistralLiveProvider(cfg.mistralKey);
   }

@@ -4,4 +4,6 @@ export * from './vault.js';
 export * from './cost.js';
 export * from './providers/mockProviders.js';
 export * from './providers/mistralLiveProvider.js';
+export * from './providers/geminiLiveProvider.js';
 export * from './factory.js';
+export * from './remixDefaults.js';
